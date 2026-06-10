@@ -150,8 +150,8 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
       if (token == null || token.isEmpty) {
         throw const ApiException('登入成功但未取得 Token');
       }
-      if (user.station != null) {
-        await widget.pushService.subscribeToTopic('can_${user.station!}');
+      if (user.topic != null) {
+        await widget.pushService.subscribeToTopic(user.topic!);
       }
       await widget.sessionStore.saveCanSession(
         CanSession(token: token, user: user, deviceId: deviceId),

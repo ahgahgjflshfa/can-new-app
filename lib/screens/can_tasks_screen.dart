@@ -48,8 +48,8 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       _tasksFuture = widget.api.fetchTasks();
     }
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
-    if (widget.user.station != null) {
-      widget.pushService.subscribeToTopic('can_${widget.user.station!}');
+    if (widget.user.topic != null) {
+      widget.pushService.subscribeToTopic(widget.user.topic!);
     }
   }
 

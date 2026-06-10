@@ -138,9 +138,10 @@ static bool _parseBool(dynamic value) {
 
 ### 決策 5：站點綁定任務查詢
 
-登入後呼叫 `GET /account/{account}` 取得使用者所屬站點，後續任務查詢使用 `GET /task/station/{stationCode}`。
+CAN 登入回傳直接包含 `account`、`station`、`topic`，無需額外呼叫 `GET /account/{account}`。後續任務查詢使用 `GET /task/station/{stationCode}`。
 
 **原因**：
+- 後端簡化登入流程，一次回傳所有必要資訊
 - 確保使用者只看到所屬站點的任務
 - 限制最多顯示 20 筆（`List.take(20)`）
 
@@ -164,7 +165,7 @@ pushService.subscribeToTopic(user.station!)
 ### 登入流程
 
 ```
-[系統選擇] → [登入畫面] → [POST /auth/login] → [GET /account/{account}] → [儲存 session] → [訂閱 push topic] → [任務列表]
+[系統選擇] → [登入畫面] → [POST /auth/login] → [儲存 session] → [訂閱 push topic] → [任務列表]
 ```
 
 ### 任務列表刷新

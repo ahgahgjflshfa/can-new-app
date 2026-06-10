@@ -50,10 +50,8 @@ class CanApiClient implements CanApi {
     }
     _token = accessToken;
 
-    // 取得帳號詳細資料（含 station）
-    final accountPayload = await _send('GET', '/account/$account');
-    final accountData = _readMap(accountPayload, 'account');
-    return CanUserProfile.fromJson(accountData);
+    // Backend now returns account/station/topic directly in login response.
+    return CanUserProfile.fromJson(data);
   }
 
   @override

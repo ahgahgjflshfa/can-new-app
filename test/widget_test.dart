@@ -386,7 +386,7 @@ class FakeCanApi implements CanApi {
   }) async {
     loggedInAccount = account;
     token = 'can-token';
-    return CanUserProfile(account: account, station: 'A12');
+    return CanUserProfile(account: account, station: 'A12', topic: 'can_A12');
   }
 
   @override
