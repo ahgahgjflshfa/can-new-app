@@ -196,7 +196,7 @@ pushService.subscribeToTopic(user.station!)
 
 ## 已知限制
 
-1. **CAN 後端尚未整合 FCM**：目前 CAN 系統推播需後端團隊參考 `FCM_INTEGRATION_MEMO.md` 實作
+1. **~~CAN 後端尚未整合 FCM~~ → 已整合**：CAN 後端已於 `POST /api/task`（民眾回報溢滿建立新任務）時自動發送 FCM 推播到 `/topics/can_{stationCode}`。詳見 `API.md` FCM 推播整合章節與 `FCM_INTEGRATION_MEMO.md`。
 2. **兩系統無法同時顯示**：必須切換系統才能查看另一套任務
 3. **iOS/macOS 建置需完整 Xcode**：Android 開發不受影響
 
