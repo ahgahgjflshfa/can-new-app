@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "177168438642",
+    "project_id": "tym-station-service",
+    "storage_bucket": "tym-station-service.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:177168438642:android:c2b17c20d82a82db8439eb",
+        "android_client_info": {
+          "package_name": "com.tymetro.station_service"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDiEF_ofkF4tlpXkWAyfYN9DFK60QmFVo8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
