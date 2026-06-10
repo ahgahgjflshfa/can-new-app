@@ -129,7 +129,7 @@ class _AccountSection extends StatelessWidget {
           iconColor: Theme.of(context).colorScheme.error,
           onTap: () async {
             if (user.station != null) {
-              await pushService.unsubscribeFromTopic(user.station!);
+              await pushService.unsubscribeFromTopic('can_${user.station!}');
             }
             await api.logout();
             await sessionStore.clearSession();
