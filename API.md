@@ -47,15 +47,15 @@ export const FCM_CONFIG = {
 {
   "to": "/topics/can_A12",
   "notification": {
-    "title": "垃圾桶溢滿回報",
-    "body": "A12 站月台層北側垃圾桶已滿，請前往處理"
+    "title": "[旅客報清通知]",
+    "body": "A12 站月台層北側 請迅速辦理"
   },
   "data": {
     "system": "can",
     "station_code": "A12",
     "serial_number": "123",
     "location": "月台層北側",
-    "is_full": "true"
+    "is_dirty": "true"
   }
 }
 ```
@@ -65,8 +65,8 @@ export const FCM_CONFIG = {
 | `data.system` | 固定為 `"can"`，App 用來區分系統 |
 | `data.station_code` | 站點代碼 |
 | `data.serial_number` | 任務序號（`serialNumber`） |
-| `data.location` | 垃圾桶位置名稱 |
-| `data.is_full` | 溢滿狀態（`"true"`） |
+| `data.location` | 報清位置名稱 |
+| `data.is_dirty` | 報清狀態（`"true"`） |
 
 ---
 
@@ -90,7 +90,10 @@ export const FCM_CONFIG = {
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs..."
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "account": "user001",
+  "station": "A12",
+  "topic": "can_A12"
 }
 ```
 

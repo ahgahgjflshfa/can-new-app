@@ -75,15 +75,16 @@ export const FCM_CONFIG = {
 
 ## App 端訂閱機制
 
-App 在登入 Q 潔淨系統後，會呼叫 `subscribeToTopic('can_' + stationCode)` 訂閱對應站點：
+CAN 登入回傳已包含 `topic` 欄位（例如 `"can_A12"`），App 直接使用該值訂閱，無需自行拼接：
 
 ```dart
-pushService.subscribeToTopic('can_${user.station}')
+// login response: { access_token, account, station, topic }
+pushService.subscribeToTopic(user.topic)
 ```
 
 兩套系統共享同一個 Firebase 專案與 `PushNotificationService` 實例：
-- 立碼幫幫忙訂閱 `/topics/{stationCode}`（無前綴）
-- Q 潔淨訂閱 `/topics/can_{stationCode}`（有 `can_` 前綴）
+- 立碼幫幫忙訂閱 `/topics/{stationCode}`（無前綴，後端決定）
+- Q 潔淨訂閱 `/topics/can_{stationCode}`（後端在 login response 的 `topic` 欄位提供）
 
 ---
 
