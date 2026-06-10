@@ -198,7 +198,7 @@ try {
 與手機版相同：
 
 ```
-[系統選擇] → [登入畫面] → [POST /auth/login] → [GET /account/{account}] → [儲存 session] → [任務列表]
+[系統選擇] → [登入畫面] → [POST /auth/login] → [儲存 session] → [訂閱 push topic] → [任務列表]
 ```
 
 桌面版登入後 **不訂閱 push topic**（無 FCM）。

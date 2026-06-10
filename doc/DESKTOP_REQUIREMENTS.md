@@ -77,8 +77,7 @@
 
 | 方法 | 端點 | 說明 |
 |------|------|------|
-| `POST` | `/api/auth/login` | 登入，回傳 JWT token |
-| `GET` | `/api/account/{account}` | 取得使用者所屬站點 |
+| `POST` | `/api/auth/login` | 登入，回傳 JWT token + account + station + topic |
 | `GET` | `/api/task/station/{stationCode}` | 依站點取得任務列表 |
 | `PATCH` | `/api/task/{serialNumber}` | 標記完成/未完成 |
 
