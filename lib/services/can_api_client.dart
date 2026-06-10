@@ -9,7 +9,7 @@ import 'api_log_store.dart';
 import 'app_logger.dart';
 import 'can_api.dart';
 
-const canBaseUrl = 'https://www.tymetro.com.tw/can_api/api';
+const canBaseUrl = 'https://www-u.tymetro.com.tw/can_api/api';
 const canApiTimeout = Duration(seconds: 12);
 
 class CanApiClient implements CanApi {

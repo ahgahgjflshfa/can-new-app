@@ -8,11 +8,66 @@
 
 | 項目 | 值 | 備註 |
 |------|-----|------|
-| **Base URL** | `https://www.tymetro.com.tw/api` | 生產環境（從 CORS 設定推斷） |
+| **Base URL** | `https://www-u.tymetro.com.tw/can_api/api` | App 測試環境 |
+| | `https://www.tymetro.com.tw/can_api/api` | 生產環境 |
 | | `http://localhost:3001/api` | 本地開發 |
 | **API 前綴** | `/api` | 所有路由均帶此前綴 |
 | **認證方式** | JWT Bearer Token | `Authorization: Bearer <token>` |
 | **Super Token** | `4pb9gsa196wFe9zo` | 可繞過認證（應於生產移除） |
+
+---
+
+## FCM 推播整合
+
+Q 潔淨後端已整合 Firebase Cloud Messaging（FCM），在民眾回報溢滿（`POST /api/task`）且成功建立**新任務**時，會自動發送 FCM 推播通知到該站點的 Topic（`/topics/{stationCode}`）。
+
+| 項目 | 說明 |
+|------|------|
+| **觸發時機** | 民眾回報溢滿，成功建立新任務（非重複回報） |
+| **Topic** | `/topics/can_{stationCode}`（例如 `/topics/can_A12`） |
+| **FCM Server Key** | 從 `src/app/fcm/fcm.config.ts` 讀取 |
+| **未設定 Key** | 優雅跳過，不影響業務邏輯，僅記錄警告 |
+| **失敗處理** | Fire-and-forget 模式，發送失敗不影響主流程 |
+
+### 啟用 FCM 推播
+
+編輯 `src/app/fcm/fcm.config.ts`，將 `serverKey` 填入從 Firebase 專案取得的 Server Key：
+
+```typescript
+export const FCM_CONFIG = {
+    serverKey: 'AAAA...your-server-key...',
+    fcmUrl: 'https://fcm.googleapis.com/fcm/send',
+};
+```
+
+> 若 `serverKey` 留空，FCM 推播會被跳過，系統仍正常運作。
+
+### FCM Payload 格式
+
+```json
+{
+  "to": "/topics/can_A12",
+  "notification": {
+    "title": "[旅客報清通知]",
+    "body": "A12 站月台層北側 請迅速辦理"
+  },
+  "data": {
+    "system": "can",
+    "station_code": "A12",
+    "serial_number": "123",
+    "location": "月台層北側",
+    "is_dirty": "true"
+  }
+}
+```
+
+| 資料欄位 | 說明 |
+|----------|------|
+| `data.system` | 固定為 `"can"`，App 用來區分系統 |
+| `data.station_code` | 站點代碼 |
+| `data.serial_number` | 任務序號（`serialNumber`） |
+| `data.location` | 報清位置名稱 |
+| `data.is_dirty` | 報清狀態（`"true"`） |
 
 ---
 
@@ -36,7 +91,10 @@
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIs..."
+  "access_token": "eyJhbGciOiJIUzI1NiIs...",
+  "account": "user001",
+  "station": "A12",
+  "topic": "can_A12"
 }
 ```
 
