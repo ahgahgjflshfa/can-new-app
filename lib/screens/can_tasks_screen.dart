@@ -36,19 +36,16 @@ class CanTasksScreen extends StatefulWidget {
 
 class _CanTasksScreenState extends State<CanTasksScreen> {
   late Future<List<CanTask>> _tasksFuture;
+  String? _loadError;
   var _busySerialNumber = 0;
 
   @override
   void initState() {
     super.initState();
-    final station = widget.user.station;
-    if (station != null && station.isNotEmpty) {
-      _tasksFuture = widget.api.fetchTasksByStation(station);
-    } else {
-      _tasksFuture = widget.api.fetchTasks();
-    }
+    _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
-    if (widget.user.topic != null) {
+    final station = widget.user.station?.trim();
+    if (station != null && station.isNotEmpty && widget.user.topic != null) {
       widget.pushService.subscribeToTopic(widget.user.topic!);
     }
   }
@@ -61,94 +58,115 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('任務列表'),
-        leading: IconButton(
-          tooltip: '返回系統選擇',
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _returnToSystemSelection();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('任務列表'),
+          leading: IconButton(
+            tooltip: '返回系統選擇',
+            onPressed: _returnToSystemSelection,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '重新整理',
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              key: const Key('canSettingsButton'),
+              tooltip: '設定',
+              onPressed: _openSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
+          ],
         ),
-        actions: [
-          IconButton(
-            tooltip: '重新整理',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            key: const Key('canSettingsButton'),
-            tooltip: '設定',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => _refresh(),
-        child: FutureBuilder<List<CanTask>>(
-          future: _tasksFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('正在讀取任務...'),
-                  ],
-                ),
-              );
-            }
-            if (snapshot.hasError) {
-              final error = snapshot.error;
-              final errorText = error is ApiException
-                  ? error.message
-                  : error.toString();
-              return ErrorState(
-                message: errorText,
-                onRetry: _refresh,
-              );
-            }
-            final tasks = snapshot.data ?? const <CanTask>[];
-            if (tasks.isEmpty) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: const [
-                  SizedBox(height: 120),
-                  Icon(Icons.task_alt, size: 72, color: AppColors.primary),
-                  SizedBox(height: 16),
-                  Center(child: Text('目前沒有待處理任務')),
-                ],
-              );
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: tasks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final task = tasks[index];
-                return _CanTaskCard(
-                  task: task,
-                  busy: _busySerialNumber == task.serialNumber,
-                  onComplete: task.isPending ? () => _completeTask(task) : null,
-                  onNoIssue: task.isPending ? () => _noIssueTask(task) : null,
+        body: RefreshIndicator(
+          onRefresh: () async => _refresh(),
+          child: FutureBuilder<List<CanTask>>(
+            future: _tasksFuture,
+            builder: (context, snapshot) {
+              if (_loadError != null) {
+                return ErrorState(message: _loadError!, onRetry: _refresh);
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('正在讀取任務...'),
+                    ],
+                  ),
                 );
-              },
-            );
-          },
+              }
+              if (snapshot.hasError) {
+                final error = snapshot.error;
+                final errorText = error is ApiException
+                    ? error.message
+                    : error.toString();
+                return ErrorState(message: errorText, onRetry: _refresh);
+              }
+              final tasks = snapshot.data ?? const <CanTask>[];
+              if (tasks.isEmpty) {
+                return ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: const [
+                    SizedBox(height: 120),
+                    Icon(Icons.task_alt, size: 72, color: AppColors.primary),
+                    SizedBox(height: 16),
+                    Center(child: Text('目前沒有待處理任務')),
+                  ],
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: tasks.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final task = tasks[index];
+                  return _CanTaskCard(
+                    task: task,
+                    busy: _busySerialNumber == task.serialNumber,
+                    onComplete: task.isPending
+                        ? () => _completeTask(task)
+                        : null,
+                    onNoIssue: task.isPending ? () => _noIssueTask(task) : null,
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  void _returnToSystemSelection() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   void _refresh() {
-    final station = widget.user.station;
     setState(() {
-      _tasksFuture = station != null && station.isNotEmpty
-          ? widget.api.fetchTasksByStation(station)
-          : widget.api.fetchTasks();
+      _tasksFuture = _loadTasks();
     });
+  }
+
+  Future<List<CanTask>> _loadTasks() async {
+    final station = widget.user.station?.trim();
+    if (station == null || station.isEmpty) {
+      _loadError = '帳號未設定站點，請至設定登出後重新登入';
+      return const <CanTask>[];
+    }
+    _loadError = null;
+    return widget.api.fetchTasksByStation(station);
   }
 
   Future<void> _completeTask(CanTask task) async {
@@ -171,7 +189,7 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
         isDone: true,
         resolutionType: CanResolutionType.noIssue.value,
       ),
-      '已標記無問題',
+      '已標記無髒污',
     );
   }
 
@@ -225,8 +243,6 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
     }
   }
 }
-
-
 
 class _CanTaskCard extends StatelessWidget {
   const _CanTaskCard({
@@ -298,7 +314,7 @@ class _CanTaskCard extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: onNoIssue,
                       icon: const Icon(Icons.clear),
-                      label: const Text('無問題'),
+                      label: const Text('無髒污'),
                     ),
                   ),
                 ],
@@ -309,5 +325,3 @@ class _CanTaskCard extends StatelessWidget {
     );
   }
 }
-
-

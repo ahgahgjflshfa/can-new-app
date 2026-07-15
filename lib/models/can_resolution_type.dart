@@ -1,7 +1,7 @@
 enum CanResolutionType {
   pending(0, '待處理'),
   completed(1, '已完成'),
-  noIssue(2, '無問題'),
+  noIssue(2, '無髒污'),
   systemClosed(3, '系統自動結案'),
   blacklistClosed(4, '黑名單自動結案');
 

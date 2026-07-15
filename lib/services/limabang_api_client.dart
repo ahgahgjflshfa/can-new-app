@@ -14,12 +14,13 @@ const limabangBaseUrl = 'https://www-u.tymetro.com.tw/station_services/api';
 const limabangApiTimeout = Duration(seconds: 12);
 
 class LimabangApiClient implements LimabangApi {
-  LimabangApiClient({HttpClient? httpClient})
+  LimabangApiClient({HttpClient? httpClient, this.baseUrl = limabangBaseUrl})
     : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = limabangApiTimeout;
   }
 
   final HttpClient _httpClient;
+  final String baseUrl;
   String? _token;
 
   @override
@@ -103,11 +104,7 @@ class LimabangApiClient implements LimabangApi {
     bool includeAuth = true,
   }) async {
     final token = _token;
-    if (includeAuth && (token == null || token.isEmpty)) {
-      throw const ApiException('尚未登入，請重新登入');
-    }
-
-    final requestUri = Uri.parse('$limabangBaseUrl$path');
+    final requestUri = Uri.parse('$baseUrl$path');
     final stopwatch = Stopwatch()..start();
     final safeBody = _redactBody(body);
     final apiLog = ApiLogStore.start(
@@ -120,6 +117,18 @@ class LimabangApiClient implements LimabangApi {
       'START $method $requestUri auth=$includeAuth body=${_safeBodyKeys(body)}',
     );
 
+    if (includeAuth && (token == null || token.isEmpty)) {
+      _clearTokenIfCurrent(token);
+      ApiLogStore.fail(
+        apiLog,
+        error: '登入狀態已失效，請重新登入',
+        durationMs: stopwatch.elapsedMilliseconds,
+      );
+      throw const SessionExpiredException();
+    }
+
+    String responseBody = '';
+    int statusCode = 0;
     try {
       _log('OPEN  $method $path');
       final request = await _httpClient
@@ -141,16 +150,50 @@ class LimabangApiClient implements LimabangApi {
 
       _log('SEND  $method $path');
       final response = await request.close().timeout(limabangApiTimeout);
+      statusCode = response.statusCode;
       _log(
-        'HEAD  ${response.statusCode} ${stopwatch.elapsedMilliseconds}ms $method $path',
+        'HEAD  $statusCode ${stopwatch.elapsedMilliseconds}ms $method $path',
       );
-      final responseBody = await response
+      responseBody = await response
           .transform(utf8.decoder)
           .join()
           .timeout(limabangApiTimeout);
       _log(
         'BODY  ${responseBody.length} bytes ${stopwatch.elapsedMilliseconds}ms $method $path',
       );
+      if (statusCode == HttpStatus.unauthorized && includeAuth) {
+        _clearTokenIfCurrent(token);
+        ApiLogStore.fail(
+          apiLog,
+          error: '登入狀態已失效，請重新登入',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const SessionExpiredException();
+      }
+      if (statusCode == HttpStatus.badGateway ||
+          statusCode == HttpStatus.serviceUnavailable ||
+          statusCode == HttpStatus.gatewayTimeout) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器無回應',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器無回應，請確認網路或稍後再試');
+      }
+      if (statusCode >= HttpStatus.internalServerError) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器暫時異常',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器暫時異常，請稍後再試');
+      }
       final decoded = responseBody.isEmpty
           ? <String, Object?>{}
           : jsonDecode(responseBody);
@@ -159,20 +202,20 @@ class LimabangApiClient implements LimabangApi {
           apiLog,
           error: '伺服器回應格式錯誤',
           durationMs: stopwatch.elapsedMilliseconds,
-          statusCode: response.statusCode,
+          statusCode: statusCode,
           responseBody: responseBody,
         );
         throw const ApiException('伺服器回應格式錯誤');
       }
       final status = decoded['status'];
-      if (status == 'error' || response.statusCode >= 400) {
+      if (status == 'error' || statusCode >= 400) {
         final message = decoded['message'] as String? ?? '操作失敗';
         _log('ERROR api_status=$status message=$message $method $path');
         ApiLogStore.fail(
           apiLog,
           error: message,
           durationMs: stopwatch.elapsedMilliseconds,
-          statusCode: response.statusCode,
+          statusCode: statusCode,
           responseBody: responseBody,
         );
         throw ApiException(message);
@@ -180,11 +223,13 @@ class LimabangApiClient implements LimabangApi {
       _log('DONE  ${stopwatch.elapsedMilliseconds}ms $method $path');
       ApiLogStore.complete(
         apiLog,
-        statusCode: response.statusCode,
+        statusCode: statusCode,
         responseBody: responseBody,
         durationMs: stopwatch.elapsedMilliseconds,
       );
       return decoded;
+    } on SessionExpiredException {
+      rethrow;
     } on ApiException {
       if (apiLog.durationMs == null) {
         ApiLogStore.fail(
@@ -195,6 +240,16 @@ class LimabangApiClient implements LimabangApi {
       }
       rethrow;
     } on FormatException catch (error) {
+      if (statusCode >= HttpStatus.internalServerError) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器無回應',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器無回應，請確認網路或稍後再試');
+      }
       _log(
         'FAIL  invalid_json ${stopwatch.elapsedMilliseconds}ms $method $path error=$error',
       );
@@ -233,7 +288,13 @@ class LimabangApiClient implements LimabangApi {
         error: '網路連線失敗: $error',
         durationMs: stopwatch.elapsedMilliseconds,
       );
-      rethrow;
+      throw const ApiException('伺服器無回應，請確認網路或稍後再試');
+    }
+  }
+
+  void _clearTokenIfCurrent(String? requestToken) {
+    if (_token == requestToken) {
+      _token = null;
     }
   }
 }

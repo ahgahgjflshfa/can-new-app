@@ -158,6 +158,28 @@ class CanApiClient implements CanApi {
       _log(
         'BODY  ${responseBody.length} bytes ${stopwatch.elapsedMilliseconds}ms $method $path',
       );
+      if (statusCode == HttpStatus.badGateway ||
+          statusCode == HttpStatus.serviceUnavailable ||
+          statusCode == HttpStatus.gatewayTimeout) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器無回應',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器無回應，請確認網路或稍後再試');
+      }
+      if (statusCode >= HttpStatus.internalServerError) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器暫時異常',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器暫時異常，請稍後再試');
+      }
       final decoded = responseBody.isEmpty
           ? <String, Object?>{}
           : jsonDecode(responseBody);
@@ -203,6 +225,16 @@ class CanApiClient implements CanApi {
       }
       rethrow;
     } on FormatException catch (error) {
+      if (statusCode >= HttpStatus.internalServerError) {
+        ApiLogStore.fail(
+          apiLog,
+          error: '伺服器無回應',
+          durationMs: stopwatch.elapsedMilliseconds,
+          statusCode: statusCode,
+          responseBody: responseBody,
+        );
+        throw const ApiException('伺服器無回應，請確認網路或稍後再試');
+      }
       final preview = responseBody.length > 500
           ? '${responseBody.substring(0, 500)}...'
           : responseBody;
