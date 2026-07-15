@@ -128,15 +128,31 @@ class _AccountSection extends StatelessWidget {
           textColor: Theme.of(context).colorScheme.error,
           iconColor: Theme.of(context).colorScheme.error,
           onTap: () async {
-            if (user.topic != null) {
-              await pushService.unsubscribeFromTopic(user.topic!);
+            try {
+              if (user.topic != null) {
+                try {
+                  await pushService.unsubscribeFromTopic(user.topic!);
+                } catch (_) {
+                  // Topic cleanup is best effort; local logout must continue.
+                }
+              }
+              try {
+                await api.logout();
+              } catch (_) {
+                // Remote cleanup is best effort; local logout must continue.
+              }
+              await sessionStore.clearCanSession();
+            } catch (_) {
+              if (context.mounted) {
+                showSnackBarMessage(context, '登出失敗，請稍後再試');
+              }
+              return;
             }
-            await api.logout();
-            await sessionStore.clearSession();
             if (!context.mounted) {
               return;
             }
-            Navigator.of(context).pushAndRemoveUntil(
+            Navigator.of(context).popUntil((route) => route.isFirst);
+            Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => CanLoginScreen(
                   api: api,
@@ -145,7 +161,6 @@ class _AccountSection extends StatelessWidget {
                   deviceId: deviceId,
                 ),
               ),
-              (_) => false,
             );
           },
         ),
@@ -182,7 +197,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                 valueListenable: ApiLogStore.entries,
                 builder: (context, apiLogs, _) {
                   return ValueListenableBuilder<
-                      List<PushNotificationHistoryEntry>>(
+                    List<PushNotificationHistoryEntry>
+                  >(
                     valueListenable: PushNotificationHistory.entries,
                     builder: (context, pushLogs, _) {
                       return ListView(
@@ -192,7 +208,13 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                           const SizedBox(height: 16),
                           _buildPushStateSection(pushState),
                           const SizedBox(height: 16),
-                          _buildDevToolsSection(context, pushState, apiLogs, pushLogs, logs),
+                          _buildDevToolsSection(
+                            context,
+                            pushState,
+                            apiLogs,
+                            pushLogs,
+                            logs,
+                          ),
                         ],
                       );
                     },
@@ -211,10 +233,7 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
       title: '應用程式資訊',
       children: [
         _InfoTile(label: '版本', value: '1.0.0'),
-        _InfoTile(
-          label: '站點',
-          value: user.station ?? '未設定站別',
-        ),
+        _InfoTile(label: '站點', value: user.station ?? '未設定站別'),
       ],
     );
   }
@@ -226,18 +245,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     return _SettingsSection(
       title: '推播狀態',
       children: [
-        _InfoTile(
-          label: 'Firebase 推播',
-          value: pushState.statusMessage,
-        ),
-        _InfoTile(
-          label: '通知權限',
-          value: pushState.permissionLabel,
-        ),
-        _InfoTile(
-          label: 'FCM Token',
-          value: fcmPreview,
-        ),
+        _InfoTile(label: 'Firebase 推播', value: pushState.statusMessage),
+        _InfoTile(label: '通知權限', value: pushState.permissionLabel),
+        _InfoTile(label: 'FCM Token', value: fcmPreview),
       ],
     );
   }
@@ -284,11 +294,14 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
         ),
         const Divider(height: 1),
         ListTile(
-          leading: Icon(Icons.delete_outline,
-              color: Theme.of(context).colorScheme.error),
-          title: Text('清除所有紀錄',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.error)),
+          leading: Icon(
+            Icons.delete_outline,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          title: Text(
+            '清除所有紀錄',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
           onTap: () {
             ApiLogStore.clear();
             PushNotificationHistory.clear();
@@ -313,7 +326,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     buffer.writeln('Build: ${packageInfo['buildNumber'] ?? 'unknown'}');
     buffer.writeln('');
     buffer.writeln('--- Device ---');
-    buffer.writeln('OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
+    buffer.writeln(
+      'OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+    );
     buffer.writeln('Device ID: $deviceId');
     buffer.writeln('');
     buffer.writeln('--- Session ---');
@@ -329,9 +344,11 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     buffer.writeln('Timeout: ${canApiTimeout.inSeconds}s');
     buffer.writeln('');
     buffer.writeln('--- API Logs ---');
-    buffer.writeln(ApiLogStore.entries.value.isEmpty
-        ? 'No API logs.'
-        : _formatApiLogsForExport(ApiLogStore.entries.value));
+    buffer.writeln(
+      ApiLogStore.entries.value.isEmpty
+          ? 'No API logs.'
+          : _formatApiLogsForExport(ApiLogStore.entries.value),
+    );
     buffer.writeln('');
     buffer.writeln('--- App Logs ---');
     buffer.writeln(AppLogger.exportText());
@@ -390,8 +407,10 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                   if (entry.statusCode != null)
                     _StatusChip(statusCode: entry.statusCode!),
                   if (entry.durationMs != null)
-                    Text('${entry.durationMs} ms',
-                        style: Theme.of(context).textTheme.bodySmall),
+                    Text(
+                      '${entry.durationMs} ms',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   if (entry.error != null)
                     Container(
                       margin: const EdgeInsets.only(top: 8),
@@ -411,8 +430,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                   Text(
                     'URL',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   SelectableText(entry.fullUrl),
                   const SizedBox(height: 12),
@@ -420,8 +439,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                     Text(
                       'Request Body',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     _CodeBlock(text: entry.requestBody!),
                     const SizedBox(height: 12),
@@ -430,8 +449,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                     Text(
                       'Response Body',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     _CodeBlock(text: entry.responseBody!),
                   ],
@@ -461,15 +480,15 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
               children: [
                 _DetailRow(label: '來源', value: entry.source),
                 _DetailRow(label: '時間', value: entry.timestamp.toString()),
-                _DetailRow(
-                    label: 'Message ID', value: entry.messageId ?? '-'),
+                _DetailRow(label: 'Message ID', value: entry.messageId ?? '-'),
                 _DetailRow(label: '標題', value: entry.title ?? '-'),
                 _DetailRow(label: '內文', value: entry.body ?? '-'),
                 if (entry.data != null && entry.data!.isNotEmpty)
                   _DetailRow(
                     label: 'Data',
-                    value: const JsonEncoder.withIndent('  ')
-                        .convert(entry.data),
+                    value: const JsonEncoder.withIndent(
+                      '  ',
+                    ).convert(entry.data),
                   ),
               ],
             ),
@@ -521,9 +540,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                       Expanded(
                         child: Text(
                           'API 紀錄',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                       TextButton.icon(
@@ -539,12 +557,14 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                     const Text('目前沒有 API 紀錄。')
                   else
                     Column(
-                      children: apiLogs.reversed.map((entry) {
-                        return _ApiLogTile(
-                          entry: entry,
-                          onTap: () => _showApiLogDetail(context, entry),
-                        );
-                      }).toList(growable: false),
+                      children: apiLogs.reversed
+                          .map((entry) {
+                            return _ApiLogTile(
+                              entry: entry,
+                              onTap: () => _showApiLogDetail(context, entry),
+                            );
+                          })
+                          .toList(growable: false),
                     ),
                 ],
               ),
@@ -594,9 +614,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                       Expanded(
                         child: Text(
                           '推播紀錄',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                       TextButton.icon(
@@ -612,12 +631,14 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                     const Text('目前沒有推播紀錄。')
                   else
                     Column(
-                      children: pushLogs.reversed.map((entry) {
-                        return _PushLogTile(
-                          entry: entry,
-                          onTap: () => _showPushLogDetail(context, entry),
-                        );
-                      }).toList(growable: false),
+                      children: pushLogs.reversed
+                          .map((entry) {
+                            return _PushLogTile(
+                              entry: entry,
+                              onTap: () => _showPushLogDetail(context, entry),
+                            );
+                          })
+                          .toList(growable: false),
                     ),
                 ],
               ),
@@ -664,9 +685,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                       Expanded(
                         child: Text(
                           'App Logs',
-                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
                         ),
                       ),
                       TextButton.icon(
@@ -689,9 +709,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
                     child: SelectableText(
                       logs.isEmpty ? '目前沒有 log。' : logs.reversed.join('\n'),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            height: 1.35,
-                          ),
+                        fontFamily: 'monospace',
+                        height: 1.35,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -724,10 +744,7 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     // Flutter does not expose package info without package_info_plus.
     // Return a minimal map for now; if the user adds package_info_plus later,
     // this can be wired up.
-    return <String, String>{
-      'version': '1.0.0',
-      'buildNumber': '1',
-    };
+    return <String, String>{'version': '1.0.0', 'buildNumber': '1'};
   }
 }
 
@@ -802,7 +819,9 @@ class _ApiLogTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final success = entry.isSuccess;
     final statusText = entry.statusCode != null ? '${entry.statusCode}' : '---';
-    final durationText = entry.durationMs != null ? '${entry.durationMs}ms' : '';
+    final durationText = entry.durationMs != null
+        ? '${entry.durationMs}ms'
+        : '';
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -820,8 +839,8 @@ class _ApiLogTile extends StatelessWidget {
                     entry.path,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (durationText.isNotEmpty)
                     Text(
@@ -842,11 +861,11 @@ class _ApiLogTile extends StatelessWidget {
               child: Text(
                 statusText,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: success
-                          ? Colors.green.shade800
-                          : Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  color: success
+                      ? Colors.green.shade800
+                      : Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             const Icon(Icons.chevron_right, size: 18),
@@ -880,9 +899,9 @@ class _PushLogTile extends StatelessWidget {
               ),
               child: Text(
                 entry.source,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
             const SizedBox(width: 10),
@@ -894,8 +913,8 @@ class _PushLogTile extends StatelessWidget {
                     entry.title ?? '(無標題)',
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   Text(
                     _formatShortTime(entry.timestamp),
@@ -935,9 +954,9 @@ class _MethodChip extends StatelessWidget {
       child: Text(
         method,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-            ),
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -962,11 +981,11 @@ class _StatusChip extends StatelessWidget {
       child: Text(
         '$statusCode',
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: success
-                  ? Colors.green.shade800
-                  : Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w700,
-            ),
+          color: success
+              ? Colors.green.shade800
+              : Theme.of(context).colorScheme.error,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -990,10 +1009,9 @@ class _CodeBlock extends StatelessWidget {
       ),
       child: SelectableText(
         text,
-        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontFamily: 'monospace',
-              height: 1.35,
-            ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.35),
       ),
     );
   }
@@ -1015,9 +1033,9 @@ class _DetailRow extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
           ),
           SelectableText(value),
         ],
@@ -1037,8 +1055,10 @@ String _formatApiLogsForExport(List<ApiLogEntry> logs) {
   for (final log in logs) {
     final status = log.statusCode != null ? '${log.statusCode}' : '---';
     final dur = log.durationMs != null ? '${log.durationMs}ms' : '---';
-    buffer.writeln('[${_formatShortTime(log.timestamp)}] '
-        '${log.method} ${log.path} → $status ($dur)');
+    buffer.writeln(
+      '[${_formatShortTime(log.timestamp)}] '
+      '${log.method} ${log.path} → $status ($dur)',
+    );
     if (log.error != null) {
       buffer.writeln('  ERROR: ${log.error}');
     }

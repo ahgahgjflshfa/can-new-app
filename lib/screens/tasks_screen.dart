@@ -15,6 +15,7 @@ import '../widgets/error_state.dart';
 import '../widgets/snack_bar_message.dart';
 import '../widgets/task_card.dart';
 import 'settings_screen.dart';
+import 'login_screen.dart';
 
 class TasksScreen extends StatefulWidget {
   const TasksScreen({
@@ -39,6 +40,7 @@ class TasksScreen extends StatefulWidget {
 class _TasksScreenState extends State<TasksScreen> {
   late Future<List<AssistTask>> _tasksFuture;
   var _busyTaskId = 0;
+  var _sessionRecoveryStarted = false;
 
   @override
   void initState() {
@@ -58,88 +60,103 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('任務列表'),
-        leading: IconButton(
-          tooltip: '返回系統選擇',
-          onPressed: () => Navigator.of(context).pop(),
-          icon: const Icon(Icons.arrow_back),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _returnToSystemSelection();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('任務列表'),
+          leading: IconButton(
+            tooltip: '返回系統選擇',
+            onPressed: _returnToSystemSelection,
+            icon: const Icon(Icons.arrow_back),
+          ),
+          actions: [
+            IconButton(
+              tooltip: '重新整理',
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+            ),
+            IconButton(
+              key: const Key('settingsButton'),
+              tooltip: '設定',
+              onPressed: _openSettings,
+              icon: const Icon(Icons.settings_outlined),
+            ),
+          ],
         ),
-        actions: [
-          IconButton(
-            tooltip: '重新整理',
-            onPressed: _refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-          IconButton(
-            key: const Key('settingsButton'),
-            tooltip: '設定',
-            onPressed: _openSettings,
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async => _refresh(),
-        child: FutureBuilder<List<AssistTask>>(
-          future: _tasksFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('正在讀取任務...'),
-                  ],
-                ),
-              );
-            }
-            if (snapshot.hasError) {
-              return ErrorState(
-                message: _errorMessage(snapshot.error),
-                onRetry: _refresh,
-              );
-            }
-            final tasks = snapshot.data ?? const <AssistTask>[];
-            if (tasks.isEmpty) {
-              return ListView(
-                padding: const EdgeInsets.all(24),
-                children: const [
-                  SizedBox(height: 120),
-                  Icon(Icons.task_alt, size: 72, color: AppColors.primary),
-                  SizedBox(height: 16),
-                  Center(child: Text('目前沒有待處理任務')),
-                ],
-              );
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: tasks.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final task = tasks[index];
-                return TaskCard(
-                  task: task,
-                  busy: _busyTaskId == task.id,
-                  onReply: task.status == TaskStatus.pending
-                      ? () => _reply(task)
-                      : null,
-                  onCompleteNormal: task.status == TaskStatus.replied
-                      ? () => _complete(task, CompletionResult.normal)
-                      : null,
-                  onCompleteNoPassenger: task.status == TaskStatus.replied
-                      ? () => _complete(task, CompletionResult.noPassenger)
-                      : null,
+        body: RefreshIndicator(
+          onRefresh: () async => _refresh(),
+          child: FutureBuilder<List<AssistTask>>(
+            future: _tasksFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('正在讀取任務...'),
+                    ],
+                  ),
                 );
-              },
-            );
-          },
+              }
+              if (snapshot.hasError) {
+                if (snapshot.error is SessionExpiredException) {
+                  _startSessionRecovery();
+                }
+                return ErrorState(
+                  message: _errorMessage(snapshot.error),
+                  onRetry: _refresh,
+                );
+              }
+              final tasks = snapshot.data ?? const <AssistTask>[];
+              if (tasks.isEmpty) {
+                return ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: const [
+                    SizedBox(height: 120),
+                    Icon(Icons.task_alt, size: 72, color: AppColors.primary),
+                    SizedBox(height: 16),
+                    Center(child: Text('目前沒有待處理任務')),
+                  ],
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: tasks.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final task = tasks[index];
+                  return TaskCard(
+                    task: task,
+                    busy: _busyTaskId == task.id,
+                    onReply: task.status == TaskStatus.pending
+                        ? () => _reply(task)
+                        : null,
+                    onCompleteNormal: task.status == TaskStatus.replied
+                        ? () => _complete(task, CompletionResult.normal)
+                        : null,
+                    onCompleteNoPassenger: task.status == TaskStatus.replied
+                        ? () => _complete(task, CompletionResult.noPassenger)
+                        : null,
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
+  }
+
+  void _returnToSystemSelection() {
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   void _refresh() {
@@ -173,6 +190,8 @@ class _TasksScreenState extends State<TasksScreen> {
       }
       showSnackBarMessage(context, successMessage);
       _refresh();
+    } on SessionExpiredException {
+      await _recoverFromExpiredSession();
     } on ApiException catch (error) {
       if (!mounted) {
         return;
@@ -188,6 +207,53 @@ class _TasksScreenState extends State<TasksScreen> {
         setState(() => _busyTaskId = 0);
       }
     }
+  }
+
+  void _startSessionRecovery() {
+    if (!_sessionRecoveryStarted) {
+      _recoverFromExpiredSession();
+    }
+  }
+
+  Future<void> _recoverFromExpiredSession() async {
+    if (_sessionRecoveryStarted || !mounted) {
+      return;
+    }
+    _sessionRecoveryStarted = true;
+    try {
+      if (widget.user.stationId != null) {
+        try {
+          await widget.pushService.unsubscribeFromTopic(widget.user.stationId!);
+        } catch (_) {
+          // Topic cleanup is best effort.
+        }
+        if (!mounted) {
+          return;
+        }
+      }
+      await widget.sessionStore.clearSession();
+    } catch (_) {
+      _sessionRecoveryStarted = false;
+      if (mounted) {
+        showSnackBarMessage(context, '登出失敗，請稍後再試');
+      }
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LoginScreen(
+          api: widget.api,
+          pushService: widget.pushService,
+          sessionStore: widget.sessionStore,
+          deviceId: widget.deviceId,
+        ),
+      ),
+    );
+    showSnackBarMessage(context, '登入狀態已失效，請重新登入');
   }
 
   Future<void> _openSettings() async {
