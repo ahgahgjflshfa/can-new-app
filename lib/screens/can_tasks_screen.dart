@@ -261,8 +261,28 @@ class _CanTaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final statusLabel = CanResolutionType.fromValue(task.resolutionType).label;
     final isPending = task.isPending;
+    final statusSurface = task.isDone
+        ? AppColors.canTaskCompletedSurface
+        : task.isDisable
+        ? AppColors.canTaskDisabledSurface
+        : null;
+    final statusBorder = task.isDone
+        ? AppColors.canTaskCompletedBorder
+        : task.isDisable
+        ? AppColors.canTaskDisabledBorder
+        : null;
+    final statusIconColor = task.isDone
+        ? AppColors.canTaskCompletedIcon
+        : task.isDisable
+        ? AppColors.canTaskDisabledIcon
+        : Colors.orange;
 
     return Card(
+      color: statusSurface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: statusBorder ?? Colors.transparent),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -270,11 +290,7 @@ class _CanTaskCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.delete_outline,
-                  color: isPending ? Colors.orange : Colors.green,
-                  size: 20,
-                ),
+                Icon(Icons.delete_outline, color: statusIconColor, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
