@@ -232,7 +232,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
     return _SettingsSection(
       title: '應用程式資訊',
       children: [
-        _InfoTile(label: '版本', value: '1.0.0'),
+        _InfoTile(label: '版本', value: '1.0.1'),
         _InfoTile(label: '站點', value: user.stationId ?? '未設定站別'),
       ],
     );
@@ -744,7 +744,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
     // Flutter does not expose package info without package_info_plus.
     // Return a minimal map for now; if the user adds package_info_plus later,
     // this can be wired up.
-    return <String, String>{'version': '1.0.0', 'buildNumber': '1'};
+    return <String, String>{'version': '1.0.1', 'buildNumber': '2'};
   }
 }
 
