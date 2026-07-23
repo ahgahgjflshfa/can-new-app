@@ -89,6 +89,28 @@ void main() {
     expect(client.token, 'new-token');
   });
 
+  test('delayed remote logout cannot clear a newly logged-in token', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(server.close);
+    final requestSeen = Completer<void>();
+    server.listen((request) async {
+      requestSeen.complete();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+      request.response.statusCode = HttpStatus.ok;
+      request.response.write('{}');
+      await request.response.close();
+    });
+    final client = LimabangApiClient(baseUrl: 'http://127.0.0.1:${server.port}')
+      ..restoreToken('old-token');
+
+    final logout = client.logout(token: 'old-token');
+    await requestSeen.future;
+    client.restoreToken('new-token');
+    await logout;
+
+    expect(client.token, 'new-token');
+  });
+
   test('authenticated 403 remains ordinary and preserves token', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(server.close);

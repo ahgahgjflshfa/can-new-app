@@ -1,9 +1,5 @@
 class CanUserProfile {
-  const CanUserProfile({
-    required this.account,
-    this.station,
-    this.topic,
-  });
+  const CanUserProfile({required this.account, this.station, this.topic});
 
   factory CanUserProfile.fromJson(Map<String, Object?> json) {
     return CanUserProfile(
@@ -14,11 +10,7 @@ class CanUserProfile {
   }
 
   Map<String, Object?> toJson() {
-    return {
-      'account': account,
-      'station': station,
-      'topic': topic,
-    };
+    return {'account': account, 'station': station, 'topic': topic};
   }
 
   final String account;

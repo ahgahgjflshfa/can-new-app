@@ -34,6 +34,7 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
   final _passwordController = TextEditingController();
   late final Future<String> _deviceIdFuture;
   var _loading = false;
+  var _obscurePassword = true;
 
   @override
   void initState() {
@@ -103,16 +104,32 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
                     TextFormField(
                       key: const Key('canPasswordField'),
                       controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
                         labelText: '密碼',
-                        prefixIcon: Icon(Icons.lock_outline),
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                          tooltip: _obscurePassword ? '顯示密碼' : '隱藏密碼',
+                          onPressed: () => setState(
+                            () => _obscurePassword = !_obscurePassword,
+                          ),
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
                       ),
                       validator: (value) =>
                           value == null || value.isEmpty ? '請輸入密碼' : null,
                       onFieldSubmitted: (_) => _submit(),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 8),
+                    Text(
+                      '無法登入時，請確認帳號、密碼與網路；仍無法登入請聯絡值班主管。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 16),
                     FilledButton.icon(
                       key: const Key('canLoginButton'),
                       onPressed: _loading ? null : _submit,
@@ -174,6 +191,8 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
       showSnackBarMessage(context, error.message);
     } on SocketException {
       showSnackBarMessage(context, '無法連線到伺服器，請檢查網路');
+    } on Object {
+      showSnackBarMessage(context, '無法儲存登入狀態，請確認儲存空間後重試');
     } finally {
       if (mounted) {
         setState(() => _loading = false);

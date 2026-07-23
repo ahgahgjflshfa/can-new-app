@@ -43,13 +43,76 @@ class PushNotificationState {
   final String? fcmToken;
 }
 
+enum PushSystem { limabang, can, charge }
+
+class PushNotificationEvent {
+  const PushNotificationEvent({
+    required this.sequence,
+    required this.source,
+    required this.system,
+    required this.messageId,
+    required this.data,
+    this.title,
+    this.body,
+  });
+
+  final int sequence;
+  final String source;
+  final PushSystem? system;
+  final String? messageId;
+  final Map<String, dynamic> data;
+  final String? title;
+  final String? body;
+}
+
+class PushRefreshEvent {
+  const PushRefreshEvent({required this.sequence, required this.system});
+
+  final int sequence;
+  final PushSystem? system;
+}
+
 class PushNotificationService {
   final ValueNotifier<PushNotificationState> state = ValueNotifier(
     const PushNotificationState.notInitialized(),
   );
-  final ValueNotifier<int> refreshSignal = ValueNotifier(0);
+  final ValueNotifier<PushRefreshEvent?> refreshSignal = ValueNotifier(null);
+
+  /// Last notification, including its target system and payload.
+  final ValueNotifier<PushNotificationEvent?> notificationSignal =
+      ValueNotifier(null);
+
+  /// Notifications that were opened/tapped, including cold-start opens.
+  final ValueNotifier<PushNotificationEvent?> navigationSignal = ValueNotifier(
+    null,
+  );
 
   FirebaseMessaging? _messaging;
+  int _nextEventSequence = 0;
+
+  /// Publishes an event through the same signals used by Firebase listeners.
+  /// This is intentionally small so deterministic callers (and tests) can
+  /// exercise sequencing without requiring a native Firebase channel.
+  @visibleForTesting
+  void publishForTesting({
+    required PushSystem? system,
+    String? messageId,
+    bool navigation = false,
+  }) {
+    final event = PushNotificationEvent(
+      sequence: ++_nextEventSequence,
+      source: 'TEST',
+      system: system,
+      messageId: messageId,
+      data: const <String, dynamic>{},
+    );
+    notificationSignal.value = event;
+    if (navigation) navigationSignal.value = event;
+    refreshSignal.value = PushRefreshEvent(
+      sequence: event.sequence,
+      system: event.system,
+    );
+  }
 
   String? get fcmToken => state.value.fcmToken;
 
@@ -95,7 +158,8 @@ class PushNotificationService {
           body: message.notification?.body,
           data: message.data,
         );
-        refreshSignal.value += 1;
+        _publish(message, 'FOREGROUND');
+        _publishRefresh();
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -111,7 +175,8 @@ class PushNotificationService {
           body: message.notification?.body,
           data: message.data,
         );
-        refreshSignal.value += 1;
+        _publish(message, 'OPENED', navigation: true);
+        _publishRefresh();
       });
 
       final initialMessage = await _messaging!.getInitialMessage();
@@ -128,7 +193,8 @@ class PushNotificationService {
           body: initialMessage.notification?.body,
           data: initialMessage.data,
         );
-        refreshSignal.value += 1;
+        _publish(initialMessage, 'INITIAL', navigation: true);
+        _publishRefresh();
       }
     } on Object catch (error) {
       state.value = const PushNotificationState(
@@ -148,8 +214,23 @@ class PushNotificationService {
       await _messaging!.subscribeToTopic(topic);
       AppLogger.log('FirebaseMessaging', 'subscribedToTopic topic=$topic');
     } on Object catch (error) {
-      AppLogger.log('FirebaseMessaging', 'subscribeToTopic failed topic=$topic error=$error');
+      AppLogger.log(
+        'FirebaseMessaging',
+        'subscribeToTopic failed topic=$topic error=$error',
+      );
     }
+  }
+
+  String topicFor(PushSystem system, String station) {
+    return '${system == PushSystem.charge ? 'charge' : 'can'}_$station';
+  }
+
+  Future<void> subscribeToSystemTopic(PushSystem system, String station) {
+    return subscribeToTopic(topicFor(system, station));
+  }
+
+  Future<void> unsubscribeFromSystemTopic(PushSystem system, String station) {
+    return unsubscribeFromTopic(topicFor(system, station));
   }
 
   Future<void> unsubscribeFromTopic(String topic) async {
@@ -160,8 +241,50 @@ class PushNotificationService {
       await _messaging!.unsubscribeFromTopic(topic);
       AppLogger.log('FirebaseMessaging', 'unsubscribedFromTopic topic=$topic');
     } on Object catch (error) {
-      AppLogger.log('FirebaseMessaging', 'unsubscribeFromTopic failed topic=$topic error=$error');
+      AppLogger.log(
+        'FirebaseMessaging',
+        'unsubscribeFromTopic failed topic=$topic error=$error',
+      );
     }
+  }
+
+  void _publish(
+    RemoteMessage message,
+    String source, {
+    bool navigation = false,
+  }) {
+    final event = PushNotificationEvent(
+      sequence: ++_nextEventSequence,
+      source: source,
+      system: _systemFrom(message.data['system']),
+      messageId: message.messageId,
+      data: Map<String, dynamic>.from(message.data),
+      title: message.notification?.title,
+      body: message.notification?.body,
+    );
+    notificationSignal.value = event;
+    if (navigation) navigationSignal.value = event;
+  }
+
+  void _publishRefresh() {
+    refreshSignal.value = PushRefreshEvent(
+      sequence: _nextEventSequence,
+      system: notificationSignal.value?.system,
+    );
+  }
+}
+
+PushSystem? _systemFrom(Object? value) {
+  switch (value) {
+    case 'can':
+      return PushSystem.can;
+    case 'charge':
+      return PushSystem.charge;
+    case 'limabang':
+    case 'station_services':
+      return PushSystem.limabang;
+    default:
+      return null;
   }
 }
 
@@ -240,8 +363,10 @@ class PushNotificationHistory {
     }
     final buffer = StringBuffer();
     for (final e in entries.value) {
-      buffer.writeln('[${_formatTimestamp(e.timestamp)}][${e.source}] '
-          'id=${e.messageId ?? '-'} title=${e.title ?? '-'}');
+      buffer.writeln(
+        '[${_formatTimestamp(e.timestamp)}][${e.source}] '
+        'id=${e.messageId ?? '-'} title=${e.title ?? '-'}',
+      );
       if (e.data != null && e.data!.isNotEmpty) {
         buffer.writeln('  data: ${jsonEncode(e.data)}');
       }

@@ -14,6 +14,7 @@ import '../theme/app_colors.dart';
 import '../widgets/error_state.dart';
 import '../widgets/snack_bar_message.dart';
 import '../widgets/task_card.dart';
+import '../widgets/stale_task_banner.dart';
 import 'settings_screen.dart';
 import 'login_screen.dart';
 
@@ -39,13 +40,14 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   late Future<List<AssistTask>> _tasksFuture;
+  List<AssistTask>? _lastTasks;
   var _busyTaskId = 0;
   var _sessionRecoveryStarted = false;
 
   @override
   void initState() {
     super.initState();
-    _tasksFuture = widget.api.fetchTasks();
+    _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
     if (widget.user.stationId != null) {
       widget.pushService.subscribeToTopic(widget.user.stationId!);
@@ -69,7 +71,7 @@ class _TasksScreenState extends State<TasksScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('任務列表'),
+          title: const Text('立碼幫幫忙・任務列表'),
           leading: IconButton(
             tooltip: '返回系統選擇',
             onPressed: _returnToSystemSelection,
@@ -94,14 +96,18 @@ class _TasksScreenState extends State<TasksScreen> {
           child: FutureBuilder<List<AssistTask>>(
             future: _tasksFuture,
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              final refreshing =
+                  snapshot.connectionState == ConnectionState.waiting &&
+                  _lastTasks != null;
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  _lastTasks == null) {
                 return const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       CircularProgressIndicator(),
                       SizedBox(height: 16),
-                      Text('正在讀取任務...'),
+                      Text('正在讀取任務，請稍候...'),
                     ],
                   ),
                 );
@@ -109,41 +115,73 @@ class _TasksScreenState extends State<TasksScreen> {
               if (snapshot.hasError) {
                 if (snapshot.error is SessionExpiredException) {
                   _startSessionRecovery();
+                  return ErrorState(
+                    message: '登入狀態已失效，正在返回登入畫面…',
+                    onRetry: _recoverFromExpiredSession,
+                  );
                 }
-                return ErrorState(
-                  message: _errorMessage(snapshot.error),
-                  onRetry: _refresh,
-                );
+                if (_lastTasks == null) {
+                  return ErrorState(
+                    message: _errorMessage(snapshot.error),
+                    onRetry: _refresh,
+                  );
+                }
               }
-              final tasks = snapshot.data ?? const <AssistTask>[];
+              final tasks = snapshot.data ?? _lastTasks ?? const <AssistTask>[];
               if (tasks.isEmpty) {
                 return ListView(
                   padding: const EdgeInsets.all(24),
-                  children: const [
+                  children: [
+                    if (refreshing || snapshot.hasError)
+                      StaleTaskBanner(
+                        message: refreshing
+                            ? '正在更新，暫時沒有已載入的任務'
+                            : '目前無法更新，請重試確認最新任務',
+                        onRetry: _refresh,
+                      ),
                     SizedBox(height: 120),
-                    Icon(Icons.task_alt, size: 72, color: AppColors.primary),
-                    SizedBox(height: 16),
-                    Center(child: Text('目前沒有待處理任務')),
+                    const Icon(
+                      Icons.task_alt,
+                      size: 72,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(height: 16),
+                    const Center(child: Text('目前沒有待處理任務\n可下拉或按重新整理檢查最新任務')),
                   ],
                 );
               }
               return ListView.separated(
                 padding: const EdgeInsets.all(16),
-                itemCount: tasks.length,
+                itemCount:
+                    tasks.length + ((refreshing || snapshot.hasError) ? 1 : 0),
                 separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final task = tasks[index];
+                  if (index == 0 && (refreshing || snapshot.hasError)) {
+                    return StaleTaskBanner(
+                      message: refreshing
+                          ? '正在更新，以下是上次載入的任務'
+                          : '目前無法更新，以下是上次載入的任務',
+                      onRetry: _refresh,
+                    );
+                  }
+                  final taskIndex =
+                      index - ((refreshing || snapshot.hasError) ? 1 : 0);
+                  final task = tasks[taskIndex];
                   return TaskCard(
                     task: task,
                     busy: _busyTaskId == task.id,
+                    locked: _busyTaskId != 0,
                     onReply: task.status == TaskStatus.pending
-                        ? () => _reply(task)
+                        ? () => _confirmReply(task)
                         : null,
                     onCompleteNormal: task.status == TaskStatus.replied
-                        ? () => _complete(task, CompletionResult.normal)
+                        ? () => _confirmComplete(task, CompletionResult.normal)
                         : null,
                     onCompleteNoPassenger: task.status == TaskStatus.replied
-                        ? () => _complete(task, CompletionResult.noPassenger)
+                        ? () => _confirmComplete(
+                            task,
+                            CompletionResult.noPassenger,
+                          )
                         : null,
                   );
                 },
@@ -161,20 +199,70 @@ class _TasksScreenState extends State<TasksScreen> {
 
   void _refresh() {
     setState(() {
-      _tasksFuture = widget.api.fetchTasks();
+      _tasksFuture = _loadTasks();
     });
   }
 
-  Future<void> _reply(AssistTask task) async {
-    await _runTaskAction(task.id, () => widget.api.replyTask(task.id), '已確認');
+  Future<List<AssistTask>> _loadTasks() async {
+    final tasks = await widget.api.fetchTasks();
+    _lastTasks = tasks;
+    return tasks;
   }
 
-  Future<void> _complete(AssistTask task, CompletionResult result) async {
-    await _runTaskAction(
-      task.id,
-      () => widget.api.completeTask(task.id, result),
-      '已完成結案',
+  Future<void> _confirmReply(AssistTask task) async {
+    final confirmed = await _confirmAction(
+      title: '確認接案？',
+      message: '接案後，這筆任務會進入處理中狀態。',
     );
+    if (confirmed) {
+      await _runTaskAction(
+        task.id,
+        () => widget.api.replyTask(task.id),
+        '已確認接案',
+      );
+    }
+  }
+
+  Future<void> _confirmComplete(
+    AssistTask task,
+    CompletionResult result,
+  ) async {
+    final noPassenger = result == CompletionResult.noPassenger;
+    final confirmed = await _confirmAction(
+      title: noPassenger ? '確認以現場無人結案？' : '確認正常完成並結案？',
+      message: noPassenger ? '結案後任務將不再顯示為待處理，請確認現場確實無人。' : '結案後任務將不再顯示為待處理。',
+    );
+    if (confirmed) {
+      await _runTaskAction(
+        task.id,
+        () => widget.api.completeTask(task.id, result),
+        noPassenger ? '已以現場無人結案' : '已正常完成結案',
+      );
+    }
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('確認'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   Future<void> _runTaskAction(
@@ -192,16 +280,16 @@ class _TasksScreenState extends State<TasksScreen> {
       _refresh();
     } on SessionExpiredException {
       await _recoverFromExpiredSession();
-    } on ApiException catch (error) {
+    } on ApiException {
       if (!mounted) {
         return;
       }
-      showSnackBarMessage(context, error.message);
+      showSnackBarMessage(context, '任務處理失敗，請稍後重試');
     } on SocketException {
       if (!mounted) {
         return;
       }
-      showSnackBarMessage(context, '無法連線到伺服器，請稍後再試');
+      showSnackBarMessage(context, '網路連線中斷，請稍後重試');
     } finally {
       if (mounted) {
         setState(() => _busyTaskId = 0);
@@ -221,6 +309,10 @@ class _TasksScreenState extends State<TasksScreen> {
     }
     _sessionRecoveryStarted = true;
     try {
+      await widget.sessionStore.clearSession();
+      if (!mounted) {
+        return;
+      }
       if (widget.user.stationId != null) {
         try {
           await widget.pushService.unsubscribeFromTopic(widget.user.stationId!);
@@ -231,11 +323,10 @@ class _TasksScreenState extends State<TasksScreen> {
           return;
         }
       }
-      await widget.sessionStore.clearSession();
     } catch (_) {
       _sessionRecoveryStarted = false;
       if (mounted) {
-        showSnackBarMessage(context, '登出失敗，請稍後再試');
+        showSnackBarMessage(context, '登入狀態清除失敗，請確認儲存空間後重試');
       }
       return;
     }
@@ -271,18 +362,19 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   void _refreshFromPush() {
-    if (mounted) {
+    if (mounted &&
+        widget.pushService.refreshSignal.value?.system == PushSystem.limabang) {
       _refresh();
     }
   }
 }
 
 String _errorMessage(Object? error) {
-  if (error is ApiException) {
-    return error.message;
-  }
   if (error is SocketException) {
-    return '無法連線到伺服器，請檢查網路';
+    return '目前無法連線，請檢查網路後重試。';
   }
-  return '讀取資料失敗';
+  if (error is ApiException) {
+    return '目前無法取得任務，請稍後重試。';
+  }
+  return '目前無法取得任務，請稍後重試。';
 }

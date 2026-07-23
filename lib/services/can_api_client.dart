@@ -12,13 +12,29 @@ import 'can_api.dart';
 const canBaseUrl = 'https://www-u.tymetro.com.tw/can_api/api';
 const canApiTimeout = Duration(seconds: 12);
 
+class CanHttpResponse {
+  const CanHttpResponse(this.statusCode, this.body);
+  final int statusCode;
+  final String body;
+}
+
+typedef CanHttpTransport =
+    Future<CanHttpResponse> Function(
+      String method,
+      Uri uri,
+      String? token,
+      Map<String, Object?>? body,
+    );
+
 class CanApiClient implements CanApi {
-  CanApiClient({HttpClient? httpClient})
+  CanApiClient({HttpClient? httpClient, CanHttpTransport? transport})
     : _httpClient = httpClient ?? HttpClient() {
     _httpClient.connectionTimeout = canApiTimeout;
+    _transport = transport;
   }
 
   final HttpClient _httpClient;
+  late final CanHttpTransport? _transport;
   String? _token;
 
   @override
@@ -30,6 +46,11 @@ class CanApiClient implements CanApi {
   }
 
   @override
+  void invalidateToken({String? token}) {
+    if (token == null || _token == token) _token = null;
+  }
+
+  @override
   Future<CanUserProfile> login({
     required String account,
     required String password,
@@ -37,10 +58,7 @@ class CanApiClient implements CanApi {
     final payload = await _send(
       'POST',
       '/auth/login',
-      body: <String, Object?>{
-        'account': account,
-        'password': password,
-      },
+      body: <String, Object?>{'account': account, 'password': password},
       includeAuth: false,
     );
     final data = _readMap(payload, 'login response');
@@ -55,8 +73,8 @@ class CanApiClient implements CanApi {
   }
 
   @override
-  Future<void> logout() async {
-    _token = null;
+  Future<void> logout({String? token}) async {
+    if (token == null || _token == token) _token = null;
   }
 
   @override
@@ -72,10 +90,7 @@ class CanApiClient implements CanApi {
 
   @override
   Future<List<CanTask>> fetchTasksByStation(String stationCode) async {
-    final payload = await _send(
-      'GET',
-      '/task/station/$stationCode',
-    );
+    final payload = await _send('GET', '/task/station/$stationCode');
     if (payload is! List) {
       throw const ApiException('任務資料格式錯誤');
     }
@@ -128,33 +143,35 @@ class CanApiClient implements CanApi {
     int statusCode = 0;
     try {
       _log('OPEN  $method $path');
-      final request = await _httpClient
-          .openUrl(method, requestUri)
-          .timeout(canApiTimeout);
-      _log('OPENED ${stopwatch.elapsedMilliseconds}ms $method $path');
-      request.headers.contentType = ContentType.json;
-      if (includeAuth) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      }
-      if (body != null) {
-        final bodyBytes = utf8.encode(jsonEncode(body));
-        request.contentLength = bodyBytes.length;
-        request.add(bodyBytes);
-        _log('BODY_OUT ${bodyBytes.length} bytes $method $path');
+      if (_transport case final transport?) {
+        final response = await transport(method, requestUri, token, body);
+        statusCode = response.statusCode;
+        responseBody = response.body;
       } else {
-        request.contentLength = 0;
+        final request = await _httpClient
+            .openUrl(method, requestUri)
+            .timeout(canApiTimeout);
+        _log('OPENED ${stopwatch.elapsedMilliseconds}ms $method $path');
+        request.headers.contentType = ContentType.json;
+        if (includeAuth) {
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+        }
+        if (body != null) {
+          final bodyBytes = utf8.encode(jsonEncode(body));
+          request.contentLength = bodyBytes.length;
+          request.add(bodyBytes);
+          _log('BODY_OUT ${bodyBytes.length} bytes $method $path');
+        } else {
+          request.contentLength = 0;
+        }
+        _log('SEND  $method $path');
+        final response = await request.close().timeout(canApiTimeout);
+        statusCode = response.statusCode;
+        responseBody = await response
+            .transform(utf8.decoder)
+            .join()
+            .timeout(canApiTimeout);
       }
-
-      _log('SEND  $method $path');
-      final response = await request.close().timeout(canApiTimeout);
-      statusCode = response.statusCode;
-      _log(
-        'HEAD  $statusCode ${stopwatch.elapsedMilliseconds}ms $method $path',
-      );
-      responseBody = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(canApiTimeout);
       _log(
         'BODY  ${responseBody.length} bytes ${stopwatch.elapsedMilliseconds}ms $method $path',
       );
@@ -179,6 +196,9 @@ class CanApiClient implements CanApi {
           responseBody: responseBody,
         );
         throw const ApiException('伺服器暫時異常，請稍後再試');
+      }
+      if (statusCode == HttpStatus.unauthorized && includeAuth) {
+        throw const SessionExpiredException();
       }
       final decoded = responseBody.isEmpty
           ? <String, Object?>{}

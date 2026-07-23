@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,6 +14,8 @@ import '../services/push_notification_service.dart';
 import '../services/session_store.dart';
 import '../theme/app_colors.dart';
 import '../widgets/snack_bar_message.dart';
+import '../widgets/notification_permission_card.dart';
+import '../widgets/notification_settings.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -128,29 +131,53 @@ class _AccountSection extends StatelessWidget {
           textColor: Theme.of(context).colorScheme.error,
           iconColor: Theme.of(context).colorScheme.error,
           onTap: () async {
-            if (user.stationId != null) {
-              try {
-                await pushService.unsubscribeFromTopic(user.stationId!);
-              } catch (_) {
-                // Topic cleanup is best effort; API logout must continue.
-              }
-            }
-            try {
-              await api.logout();
-            } catch (_) {
-              // Remote cleanup is best effort; local logout must continue.
-            }
+            final confirmed = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('確認登出？'),
+                content: const Text('登出後需要重新輸入帳號密碼才能處理任務。'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('取消'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('確認登出'),
+                  ),
+                ],
+              ),
+            );
+            if (confirmed != true || !context.mounted) return;
+            final capturedToken = api.token;
+            showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const AlertDialog(
+                content: Row(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 20),
+                    Text('登出中...'),
+                  ],
+                ),
+              ),
+            );
             try {
               await sessionStore.clearSession();
             } catch (_) {
+              if (context.mounted) Navigator.of(context).pop();
               if (context.mounted) {
-                showSnackBarMessage(context, '登出失敗，請稍後再試');
+                showSnackBarMessage(context, '登出失敗，工作階段仍保留；請確認儲存空間後重試');
               }
               return;
             }
             if (!context.mounted) {
               return;
             }
+            api.invalidateToken(token: capturedToken);
+            final messenger = ScaffoldMessenger.of(context);
+            Navigator.of(context).pop();
             Navigator.of(context).popUntil((route) => route.isFirst);
             Navigator.of(context).push(
               MaterialPageRoute(
@@ -162,6 +189,27 @@ class _AccountSection extends StatelessWidget {
                 ),
               ),
             );
+            messenger.showSnackBar(const SnackBar(content: Text('已登出')));
+            unawaited(() async {
+              var remoteCleanupFailed = false;
+              if (user.stationId != null) {
+                try {
+                  await pushService.unsubscribeFromTopic(user.stationId!);
+                } catch (_) {
+                  remoteCleanupFailed = true;
+                }
+              }
+              try {
+                await api.logout(token: capturedToken);
+              } catch (_) {
+                remoteCleanupFailed = true;
+              }
+              if (remoteCleanupFailed) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('伺服器清理失敗，已安全返回登入頁')),
+                );
+              }
+            }());
           },
         ),
       ],
@@ -207,6 +255,11 @@ class AdvancedSettingsScreen extends StatelessWidget {
                           _buildAppInfoSection(),
                           const SizedBox(height: 16),
                           _buildPushStateSection(pushState),
+                          NotificationPermissionCard(
+                            state: pushState,
+                            onOpenSettings: () =>
+                                _openNotificationSettings(context),
+                          ),
                           const SizedBox(height: 16),
                           _buildDevToolsSection(
                             context,
@@ -236,6 +289,16 @@ class AdvancedSettingsScreen extends StatelessWidget {
         _InfoTile(label: '站點', value: user.stationId ?? '未設定站別'),
       ],
     );
+  }
+
+  Future<void> _openNotificationSettings(BuildContext context) async {
+    final result = await openNotificationSettings();
+    if (!context.mounted) return;
+    showSnackBarMessage(context, switch (result) {
+      NotificationSettingsResult.requested => '已開啟通知設定，請確認允許通知',
+      NotificationSettingsResult.unsupported => '請到系統設定 > 通知 > 本 App，允許通知',
+      NotificationSettingsResult.failed => '無法自動開啟通知設定，請到系統設定 > 通知允許通知',
+    });
   }
 
   Widget _buildPushStateSection(PushNotificationState pushState) {
@@ -268,7 +331,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
             key: const Key('shareDebugButton'),
             onPressed: () => _onShareDebug(context, pushState),
             icon: const Icon(Icons.bug_report_outlined),
-            label: const Text('一鍵分享 Debug 資訊'),
+            label: const Text('複製診斷資訊（含裝置識別）'),
           ),
         ),
         const Divider(height: 1),
@@ -302,20 +365,87 @@ class AdvancedSettingsScreen extends StatelessWidget {
             '清除所有紀錄',
             style: TextStyle(color: Theme.of(context).colorScheme.error),
           ),
-          onTap: () {
-            ApiLogStore.clear();
-            PushNotificationHistory.clear();
-            AppLogger.clear();
-          },
+          onTap: () => _confirmClearAll(context),
         ),
       ],
     );
+  }
+
+  Future<void> _confirmClear(
+    BuildContext context,
+    String label,
+    VoidCallback clear,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('清除$label？'),
+        content: Text('$label 將永久清除，且無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    clear();
+    showSnackBarMessage(context, '$label已清除');
+  }
+
+  Future<void> _confirmClearAll(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('清除所有紀錄？'),
+        content: const Text('API、推播與 App 紀錄都會永久清除，且無法復原。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('清除全部'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    ApiLogStore.clear();
+    PushNotificationHistory.clear();
+    AppLogger.clear();
+    showSnackBarMessage(context, '所有診斷紀錄已清除');
   }
 
   Future<void> _onShareDebug(
     BuildContext context,
     PushNotificationState pushState,
   ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('複製診斷資訊？'),
+        content: const Text('內容含裝置識別資訊。複製後請只提供給授權的支援人員。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('複製'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     final packageInfo = await _getPackageInfo();
     final buffer = StringBuffer();
     buffer.writeln('=== 立碼幫幫忙 Debug Report ===');
@@ -329,7 +459,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
     buffer.writeln(
       'OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
     );
-    buffer.writeln('Device ID: $deviceId');
+    buffer.writeln('Device ID: 已隱藏');
     buffer.writeln('');
     buffer.writeln('--- Session ---');
     buffer.writeln('Token: ${api.token == null ? '未登入' : '已取得'}');
@@ -337,7 +467,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
     buffer.writeln('--- Push Notification ---');
     buffer.writeln('Status: ${pushState.statusMessage}');
     buffer.writeln('Permission: ${pushState.permissionLabel}');
-    buffer.writeln('FCM Token: ${pushState.fcmToken ?? '無'}');
+    buffer.writeln('FCM Token: ${pushState.fcmToken == null ? '無' : '已隱藏'}');
     buffer.writeln('');
     buffer.writeln('--- API Base ---');
     buffer.writeln('URL: $limabangBaseUrl');
@@ -546,7 +676,8 @@ class AdvancedSettingsScreen extends StatelessWidget {
                       ),
                       TextButton.icon(
                         key: const Key('clearApiLogsButton'),
-                        onPressed: ApiLogStore.clear,
+                        onPressed: () =>
+                            _confirmClear(context, 'API 紀錄', ApiLogStore.clear),
                         icon: const Icon(Icons.delete_outline, size: 18),
                         label: const Text('清除'),
                       ),
@@ -620,7 +751,11 @@ class AdvancedSettingsScreen extends StatelessWidget {
                       ),
                       TextButton.icon(
                         key: const Key('clearPushLogsButton'),
-                        onPressed: PushNotificationHistory.clear,
+                        onPressed: () => _confirmClear(
+                          context,
+                          '推播紀錄',
+                          PushNotificationHistory.clear,
+                        ),
                         icon: const Icon(Icons.delete_outline, size: 18),
                         label: const Text('清除'),
                       ),
@@ -691,7 +826,8 @@ class AdvancedSettingsScreen extends StatelessWidget {
                       ),
                       TextButton.icon(
                         key: const Key('clearLogsButton'),
-                        onPressed: AppLogger.clear,
+                        onPressed: () =>
+                            _confirmClear(context, 'App Logs', AppLogger.clear),
                         icon: const Icon(Icons.delete_outline, size: 18),
                         label: const Text('清除'),
                       ),
@@ -749,15 +885,10 @@ class AdvancedSettingsScreen extends StatelessWidget {
 }
 
 class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({
-    required this.title,
-    required this.children,
-    this.trailing,
-  });
+  const _SettingsSection({required this.title, required this.children});
 
   final String title;
   final List<Widget> children;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -778,7 +909,6 @@ class _SettingsSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                ?trailing,
               ],
             ),
           ),

@@ -2,26 +2,17 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../models/app_session.dart';
+import '../models/charge_session.dart';
 import '../services/api_exception.dart';
-import '../services/limabang_api.dart';
+import '../services/charge_api.dart';
 import '../services/push_notification_service.dart';
 import '../services/session_store.dart';
 import '../theme/app_colors.dart';
 import '../widgets/snack_bar_message.dart';
-import 'tasks_screen.dart';
+import 'charge_tasks_screen.dart';
 
-String get _deviceType {
-  if (Platform.isAndroid) return 'android';
-  if (Platform.isIOS) return 'ios';
-  if (Platform.isMacOS) return 'macos';
-  if (Platform.isWindows) return 'windows';
-  if (Platform.isLinux) return 'linux';
-  return 'unknown';
-}
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({
+class ChargeLoginScreen extends StatefulWidget {
+  const ChargeLoginScreen({
     required this.api,
     required this.pushService,
     required this.sessionStore,
@@ -29,16 +20,16 @@ class LoginScreen extends StatefulWidget {
     super.key,
   });
 
-  final LimabangApi api;
+  final ChargeApi api;
   final PushNotificationService pushService;
   final SessionStore sessionStore;
   final String? deviceId;
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<ChargeLoginScreen> createState() => _ChargeLoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _ChargeLoginScreenState extends State<ChargeLoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _accountController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -76,29 +67,28 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     const Icon(
-                      Icons.accessible_forward,
+                      Icons.bolt,
                       size: 72,
-                      color: AppColors.primary,
+                      color: AppColors.chargePrimary,
                     ),
                     const SizedBox(height: 20),
                     Text(
-                      '立碼幫幫忙',
+                      '無線充故障',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium
                           ?.copyWith(
-                            color: AppColors.primary,
+                            color: AppColors.chargePrimary,
                             fontWeight: FontWeight.w800,
                           ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '站務任務接單與結案系統',
+                      '充電設備異常與服務任務',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
-                      key: const Key('accountField'),
                       controller: _accountController,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
@@ -112,7 +102,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      key: const Key('passwordField'),
                       controller: _passwordController,
                       obscureText: _obscurePassword,
                       decoration: InputDecoration(
@@ -141,7 +130,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 16),
                     FilledButton.icon(
-                      key: const Key('loginButton'),
                       onPressed: _loading ? null : _submit,
                       icon: _loading
                           ? const SizedBox(
@@ -151,6 +139,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             )
                           : const Icon(Icons.login),
                       label: Text(_loading ? '登入中...' : '登入'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.chargePrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -163,35 +154,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
       final deviceId = await _deviceIdFuture;
       final user = await widget.api.login(
         account: _accountController.text.trim(),
         password: _passwordController.text,
-        deviceType: _deviceType,
-        deviceId: deviceId,
-        fcmToken: widget.pushService.fcmToken,
       );
       final token = widget.api.token;
       if (token == null || token.isEmpty) {
         throw const ApiException('登入成功但未取得 Token');
       }
-      if (user.stationId != null) {
-        await widget.pushService.subscribeToTopic(user.stationId!);
-      }
-      await widget.sessionStore.saveSession(
-        AppSession(token: token, user: user, deviceId: deviceId),
+      await widget.pushService.subscribeToTopic('charge_${user.station}');
+      await widget.sessionStore.saveChargeSession(
+        ChargeSession(token: token, user: user, deviceId: deviceId),
       );
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => TasksScreen(
+          builder: (_) => ChargeTasksScreen(
             api: widget.api,
             user: user,
             deviceId: deviceId,
@@ -207,9 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } on Object {
       showSnackBarMessage(context, '無法儲存登入狀態，請確認儲存空間後重試');
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 }
