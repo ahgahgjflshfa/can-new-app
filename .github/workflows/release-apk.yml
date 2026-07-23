@@ -64,3 +64,4 @@ jobs:
           name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           files: build/app/outputs/flutter-apk/app-release.apk
+          overwrite_files: true
