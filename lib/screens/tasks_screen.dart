@@ -71,7 +71,7 @@ class _TasksScreenState extends State<TasksScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('立碼幫幫忙・任務列表'),
+          title: const Text('任務列表'),
           leading: IconButton(
             tooltip: '返回系統選擇',
             onPressed: _returnToSystemSelection,

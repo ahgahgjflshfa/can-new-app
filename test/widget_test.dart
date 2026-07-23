@@ -364,7 +364,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.loggedInAccount, 'staff01');
-    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
     expect(find.text('領航站 出入口'), findsOneWidget);
     expect(find.text('待處理'), findsOneWidget);
 
@@ -439,7 +439,7 @@ void main() {
     await tester.tap(find.byKey(const Key('loginButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
 
     await tester.tap(find.byTooltip('返回系統選擇'));
     await tester.pumpAndSettle();
@@ -560,7 +560,7 @@ void main() {
     await tester.tap(find.text('立碼幫幫忙'));
     await tester.pumpAndSettle();
 
-    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(find.text('領航站 出入口'), findsOneWidget);
   });
@@ -595,7 +595,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(canApi.loggedInAccount, 'can01');
-    expect(find.text('CAN・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
     expect(find.textContaining('A12-B1-M1-1'), findsOneWidget);
     expect(find.textContaining('A12-B2-M2-2'), findsOneWidget);
   });
@@ -1031,7 +1031,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
     expect(find.text('登入狀態清除失敗，請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
@@ -1062,7 +1062,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
-    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('任務列表'), findsOneWidget);
     expect(find.text('登入狀態清除失敗，請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
