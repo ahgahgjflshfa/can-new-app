@@ -71,7 +71,7 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('CAN・任務列表'),
+          title: const Text('任務列表'),
           leading: IconButton(
             tooltip: '返回系統選擇',
             onPressed: _returnToSystemSelection,
