@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,22 +41,23 @@ class CanSettingsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('設定'),
         actions: [
-          IconButton(
-            tooltip: '進階設定',
-            icon: const Icon(Icons.tune),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => AdvancedCanSettingsScreen(
-                    api: api,
-                    user: user,
-                    deviceId: deviceId,
-                    pushService: pushService,
+          if (kDebugMode)
+            IconButton(
+              tooltip: '進階設定',
+              icon: const Icon(Icons.tune),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AdvancedCanSettingsScreen(
+                      api: api,
+                      user: user,
+                      deviceId: deviceId,
+                      pushService: pushService,
+                    ),
                   ),
-                ),
-              );
-            },
-          ),
+                );
+              },
+            ),
         ],
       ),
       body: ListView(
@@ -233,6 +235,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!kDebugMode) {
+      return const Scaffold(body: SizedBox.shrink());
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('進階設定')),
       body: ValueListenableBuilder<PushNotificationState>(
