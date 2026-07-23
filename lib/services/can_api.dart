@@ -6,12 +6,14 @@ abstract class CanApi {
 
   void restoreToken(String token);
 
+  void invalidateToken({String? token});
+
   Future<CanUserProfile> login({
     required String account,
     required String password,
   });
 
-  Future<void> logout();
+  Future<void> logout({String? token});
 
   Future<List<CanTask>> fetchTasks();
 

@@ -8,6 +8,7 @@ class TaskCard extends StatelessWidget {
   const TaskCard({
     required this.task,
     required this.busy,
+    required this.locked,
     required this.onReply,
     required this.onCompleteNormal,
     required this.onCompleteNoPassenger,
@@ -16,6 +17,7 @@ class TaskCard extends StatelessWidget {
 
   final AssistTask task;
   final bool busy;
+  final bool locked;
   final VoidCallback? onReply;
   final VoidCallback? onCompleteNormal;
   final VoidCallback? onCompleteNoPassenger;
@@ -74,36 +76,44 @@ class TaskCard extends StatelessWidget {
             ),
             if (onReply != null || onCompleteNormal != null) ...[
               const SizedBox(height: 16),
-              if (busy)
-                const LinearProgressIndicator()
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (onReply != null)
-                      FilledButton.icon(
-                        key: Key('reply-${task.id}'),
-                        onPressed: onReply,
-                        icon: const Icon(Icons.notifications_active_outlined),
-                        label: const Text('確認'),
-                      ),
-                    if (onCompleteNormal != null)
-                      FilledButton.icon(
-                        key: Key('complete-normal-${task.id}'),
-                        onPressed: onCompleteNormal,
-                        icon: const Icon(Icons.done),
-                        label: const Text('正常完成'),
-                      ),
-                    if (onCompleteNoPassenger != null)
-                      OutlinedButton.icon(
-                        key: Key('complete-empty-${task.id}'),
-                        onPressed: onCompleteNoPassenger,
-                        icon: const Icon(Icons.person_off_outlined),
-                        label: const Text('現場無人'),
-                      ),
-                  ],
-                ),
+              Stack(
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (onReply != null)
+                        FilledButton.icon(
+                          key: Key('reply-${task.id}'),
+                          onPressed: locked ? null : onReply,
+                          icon: const Icon(Icons.notifications_active_outlined),
+                          label: const Text('確認接案'),
+                        ),
+                      if (onCompleteNormal != null)
+                        FilledButton.icon(
+                          key: Key('complete-normal-${task.id}'),
+                          onPressed: locked ? null : onCompleteNormal,
+                          icon: const Icon(Icons.done),
+                          label: const Text('正常完成並結案'),
+                        ),
+                      if (onCompleteNoPassenger != null)
+                        OutlinedButton.icon(
+                          key: Key('complete-empty-${task.id}'),
+                          onPressed: locked ? null : onCompleteNoPassenger,
+                          icon: const Icon(Icons.person_off_outlined),
+                          label: const Text('現場無人（結案）'),
+                        ),
+                    ],
+                  ),
+                  if (busy)
+                    const Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(),
+                    ),
+                ],
+              ),
             ],
           ],
         ),

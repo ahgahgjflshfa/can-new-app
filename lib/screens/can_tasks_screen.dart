@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -12,7 +13,9 @@ import '../services/session_store.dart';
 import '../theme/app_colors.dart';
 import '../widgets/error_state.dart';
 import '../widgets/snack_bar_message.dart';
+import '../widgets/stale_task_banner.dart';
 import 'can_settings_screen.dart';
+import 'can_login_screen.dart';
 
 class CanTasksScreen extends StatefulWidget {
   const CanTasksScreen({
@@ -37,6 +40,7 @@ class CanTasksScreen extends StatefulWidget {
 class _CanTasksScreenState extends State<CanTasksScreen> {
   late Future<List<CanTask>> _tasksFuture;
   String? _loadError;
+  List<CanTask>? _lastTasks;
   var _busySerialNumber = 0;
 
   @override
@@ -67,7 +71,7 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('任務列表'),
+          title: const Text('CAN・任務列表'),
           leading: IconButton(
             tooltip: '返回系統選擇',
             onPressed: _returnToSystemSelection,
@@ -95,50 +99,88 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
               if (_loadError != null) {
                 return ErrorState(message: _loadError!, onRetry: _refresh);
               }
-              if (snapshot.connectionState == ConnectionState.waiting) {
+              final refreshing =
+                  snapshot.connectionState == ConnectionState.waiting &&
+                  _lastTasks != null;
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  _lastTasks == null) {
                 return const Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       CircularProgressIndicator(),
                       SizedBox(height: 16),
-                      Text('正在讀取任務...'),
+                      Text('正在讀取任務，請稍候...'),
                     ],
                   ),
                 );
               }
               if (snapshot.hasError) {
                 final error = snapshot.error;
-                final errorText = error is ApiException
-                    ? error.message
-                    : error.toString();
-                return ErrorState(message: errorText, onRetry: _refresh);
+                if (error is SessionExpiredException) {
+                  _recoverFromExpiredSession();
+                  return ErrorState(
+                    message: '登入狀態已失效，正在返回 CAN 登入畫面…',
+                    onRetry: _recoverFromExpiredSession,
+                  );
+                }
+                if (_lastTasks == null) {
+                  return ErrorState(
+                    message: '目前無法取得任務，請稍後重試。',
+                    onRetry: _refresh,
+                  );
+                }
               }
-              final tasks = snapshot.data ?? const <CanTask>[];
+              final tasks = snapshot.data ?? _lastTasks ?? const <CanTask>[];
               if (tasks.isEmpty) {
                 return ListView(
                   padding: const EdgeInsets.all(24),
-                  children: const [
+                  children: [
+                    if (refreshing || snapshot.hasError)
+                      StaleTaskBanner(
+                        message: refreshing
+                            ? '正在更新，暫時沒有已載入的任務'
+                            : '目前無法更新，請重試確認最新任務',
+                        onRetry: _refresh,
+                      ),
                     SizedBox(height: 120),
-                    Icon(Icons.task_alt, size: 72, color: AppColors.primary),
-                    SizedBox(height: 16),
-                    Center(child: Text('目前沒有待處理任務')),
+                    const Icon(
+                      Icons.task_alt,
+                      size: 72,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(height: 16),
+                    const Center(child: Text('目前沒有待處理任務\n可下拉或按重新整理檢查最新任務')),
                   ],
                 );
               }
               return ListView.separated(
                 padding: const EdgeInsets.all(16),
-                itemCount: tasks.length,
+                itemCount:
+                    tasks.length + ((refreshing || snapshot.hasError) ? 1 : 0),
                 separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  final task = tasks[index];
+                  if (index == 0 && (refreshing || snapshot.hasError)) {
+                    return StaleTaskBanner(
+                      message: refreshing
+                          ? '正在更新，以下是上次載入的任務'
+                          : '目前無法更新，以下是上次載入的任務',
+                      onRetry: _refresh,
+                    );
+                  }
+                  final taskIndex =
+                      index - ((refreshing || snapshot.hasError) ? 1 : 0);
+                  final task = tasks[taskIndex];
                   return _CanTaskCard(
                     task: task,
                     busy: _busySerialNumber == task.serialNumber,
+                    locked: _busySerialNumber != 0,
                     onComplete: task.isPending
-                        ? () => _completeTask(task)
+                        ? () => _confirmTask(task, true)
                         : null,
-                    onNoIssue: task.isPending ? () => _noIssueTask(task) : null,
+                    onNoIssue: task.isPending
+                        ? () => _confirmTask(task, false)
+                        : null,
                   );
                 },
               );
@@ -166,30 +208,40 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       return const <CanTask>[];
     }
     _loadError = null;
-    return widget.api.fetchTasksByStation(station);
+    final tasks = await widget.api.fetchTasksByStation(station);
+    _lastTasks = tasks;
+    return tasks;
   }
 
-  Future<void> _completeTask(CanTask task) async {
-    await _runTaskAction(
-      task.serialNumber,
-      () => widget.api.updateTask(
-        task.serialNumber,
-        isDone: true,
-        resolutionType: CanResolutionType.completed.value,
+  Future<void> _confirmTask(CanTask task, bool completed) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(completed ? '確認完成清潔？' : '確認以無髒污結案？'),
+        content: Text(completed ? '確認後這筆溢滿回報將標記為已處理。' : '確認後這筆回報將以「無髒污」結案。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('確認結案'),
+          ),
+        ],
       ),
-      '已標記完成',
     );
-  }
-
-  Future<void> _noIssueTask(CanTask task) async {
+    if (confirmed != true) return;
     await _runTaskAction(
       task.serialNumber,
       () => widget.api.updateTask(
         task.serialNumber,
         isDone: true,
-        resolutionType: CanResolutionType.noIssue.value,
+        resolutionType: completed
+            ? CanResolutionType.completed.value
+            : CanResolutionType.noIssue.value,
       ),
-      '已標記無髒污',
+      completed ? '已完成清潔' : '已以無髒污結案',
     );
   }
 
@@ -206,16 +258,18 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       }
       showSnackBarMessage(context, successMessage);
       _refresh();
-    } on ApiException catch (error) {
+    } on SessionExpiredException {
+      await _recoverFromExpiredSession();
+    } on ApiException {
       if (!mounted) {
         return;
       }
-      showSnackBarMessage(context, error.message);
+      showSnackBarMessage(context, '任務處理失敗，請稍後重試');
     } on SocketException {
       if (!mounted) {
         return;
       }
-      showSnackBarMessage(context, '無法連線到伺服器，請稍後再試');
+      showSnackBarMessage(context, '網路連線中斷，請稍後重試');
     } finally {
       if (mounted) {
         setState(() => _busySerialNumber = 0);
@@ -238,8 +292,50 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
   }
 
   void _refreshFromPush() {
-    if (mounted) {
+    if (mounted &&
+        widget.pushService.refreshSignal.value?.system == PushSystem.can) {
       _refresh();
+    }
+  }
+
+  var _sessionRecoveryStarted = false;
+
+  Future<void> _recoverFromExpiredSession() async {
+    if (_sessionRecoveryStarted || !mounted) return;
+    _sessionRecoveryStarted = true;
+    final rejectedToken = widget.api.token;
+    try {
+      await widget.sessionStore.clearCanSession();
+    } catch (_) {
+      _sessionRecoveryStarted = false;
+      if (mounted) showSnackBarMessage(context, '登入狀態清除失敗，請確認儲存空間後重試');
+      return;
+    }
+    widget.api.invalidateToken(token: rejectedToken);
+    final topic = widget.user.topic;
+    if (topic != null && topic.isNotEmpty) {
+      unawaited(_cleanupCanTopic(topic));
+    }
+    if (!mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CanLoginScreen(
+          api: widget.api,
+          pushService: widget.pushService,
+          sessionStore: widget.sessionStore,
+          deviceId: widget.deviceId,
+        ),
+      ),
+    );
+    showSnackBarMessage(context, 'CAN 登入狀態已失效，請重新登入');
+  }
+
+  Future<void> _cleanupCanTopic(String topic) async {
+    try {
+      await widget.pushService.unsubscribeFromTopic(topic);
+    } catch (_) {
+      // Topic cleanup is best effort after the local logout commit.
     }
   }
 }
@@ -248,12 +344,14 @@ class _CanTaskCard extends StatelessWidget {
   const _CanTaskCard({
     required this.task,
     required this.busy,
+    required this.locked,
     this.onComplete,
     this.onNoIssue,
   });
 
   final CanTask task;
   final bool busy;
+  final bool locked;
   final VoidCallback? onComplete;
   final VoidCallback? onNoIssue;
 
@@ -315,26 +413,40 @@ class _CanTaskCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text('狀態: $statusLabel'),
             const SizedBox(height: 12),
-            if (isPending && !busy)
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: onComplete,
-                      icon: const Icon(Icons.check),
-                      label: const Text('標記完成'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onNoIssue,
-                      icon: const Icon(Icons.clear),
-                      label: const Text('無髒污'),
-                    ),
-                  ),
-                ],
+            if (isPending) ...[
+              if (busy) const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final vertical =
+                      constraints.maxWidth < 420 ||
+                      MediaQuery.textScalerOf(context).scale(1) > 1.15;
+                  final complete = FilledButton.icon(
+                    onPressed: locked ? null : onComplete,
+                    icon: const Icon(Icons.check),
+                    label: const Text('完成清潔'),
+                  );
+                  final noIssue = OutlinedButton.icon(
+                    onPressed: locked ? null : onNoIssue,
+                    icon: const Icon(Icons.clear),
+                    label: const Text('無髒污（結案）'),
+                  );
+                  if (vertical) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [complete, const SizedBox(height: 8), noIssue],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: complete),
+                      const SizedBox(width: 8),
+                      Expanded(child: noIssue),
+                    ],
+                  );
+                },
               ),
+            ],
           ],
         ),
       ),

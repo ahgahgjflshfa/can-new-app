@@ -32,6 +32,11 @@ class LimabangApiClient implements LimabangApi {
   }
 
   @override
+  void invalidateToken({String? token}) {
+    _clearTokenIfCurrent(token ?? _token);
+  }
+
+  @override
   Future<UserProfile> login({
     required String account,
     required String password,
@@ -64,14 +69,15 @@ class LimabangApiClient implements LimabangApi {
   }
 
   @override
-  Future<void> logout() async {
-    if (_token == null) {
+  Future<void> logout({String? token}) async {
+    final capturedToken = token ?? _token;
+    if (capturedToken == null) {
       return;
     }
     try {
-      await _send('POST', '/auth/logout');
+      await _send('POST', '/auth/logout', authToken: capturedToken);
     } finally {
-      _token = null;
+      _clearTokenIfCurrent(capturedToken);
     }
   }
 
@@ -102,8 +108,9 @@ class LimabangApiClient implements LimabangApi {
     String path, {
     Map<String, Object?>? body,
     bool includeAuth = true,
+    String? authToken,
   }) async {
-    final token = _token;
+    final token = authToken ?? _token;
     final requestUri = Uri.parse('$baseUrl$path');
     final stopwatch = Stopwatch()..start();
     final safeBody = _redactBody(body);

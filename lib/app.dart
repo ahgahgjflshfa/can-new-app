@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'models/app_session.dart';
 import 'models/can_session.dart';
+import 'models/charge_session.dart';
+import 'services/charge_api.dart';
 import 'screens/system_selection_screen.dart';
 import 'services/can_api.dart';
 import 'services/limabang_api.dart';
@@ -17,6 +19,8 @@ class MyApp extends StatelessWidget {
     required this.sessionStore,
     this.initialLimabangSession,
     this.initialCanSession,
+    this.chargeApi,
+    this.initialChargeSession,
     super.key,
   });
 
@@ -26,6 +30,8 @@ class MyApp extends StatelessWidget {
   final SessionStore sessionStore;
   final AppSession? initialLimabangSession;
   final CanSession? initialCanSession;
+  final ChargeApi? chargeApi;
+  final ChargeSession? initialChargeSession;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +65,8 @@ class MyApp extends StatelessWidget {
       sessionStore: sessionStore,
       initialLimabangSession: initialLimabangSession,
       initialCanSession: initialCanSession,
+      chargeApi: chargeApi,
+      initialChargeSession: initialChargeSession,
     );
   }
 }

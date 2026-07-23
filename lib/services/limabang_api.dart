@@ -7,6 +7,8 @@ abstract class LimabangApi {
 
   void restoreToken(String token);
 
+  void invalidateToken({String? token});
+
   Future<UserProfile> login({
     required String account,
     required String password,
@@ -15,7 +17,7 @@ abstract class LimabangApi {
     String? fcmToken,
   });
 
-  Future<void> logout();
+  Future<void> logout({String? token});
 
   Future<List<AssistTask>> fetchTasks();
 

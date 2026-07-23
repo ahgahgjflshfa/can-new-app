@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:can_new_app/app.dart';
 import 'package:can_new_app/models/app_session.dart';
 import 'package:can_new_app/models/assist_task.dart';
 import 'package:can_new_app/models/can_session.dart';
 import 'package:can_new_app/models/can_task.dart';
 import 'package:can_new_app/models/can_user_profile.dart';
+import 'package:can_new_app/models/charge_session.dart';
+import 'package:can_new_app/models/charge_task.dart';
+import 'package:can_new_app/models/charge_task_status.dart';
+import 'package:can_new_app/models/charge_resolution_type.dart';
+import 'package:can_new_app/models/charge_user_profile.dart';
 import 'package:can_new_app/models/completion_result.dart';
 import 'package:can_new_app/models/task_status.dart';
 import 'package:can_new_app/models/user_profile.dart';
@@ -12,16 +19,321 @@ import 'package:can_new_app/services/api_exception.dart';
 import 'package:can_new_app/services/app_logger.dart';
 import 'package:can_new_app/services/can_api.dart';
 import 'package:can_new_app/services/limabang_api.dart';
+import 'package:can_new_app/services/charge_api.dart';
 import 'package:can_new_app/services/push_notification_service.dart';
 import 'package:can_new_app/services/session_store.dart';
 import 'package:can_new_app/screens/can_settings_screen.dart';
 import 'package:can_new_app/screens/can_tasks_screen.dart';
 import 'package:can_new_app/screens/settings_screen.dart';
 import 'package:can_new_app/screens/tasks_screen.dart';
+import 'package:can_new_app/widgets/notification_permission_card.dart';
+import 'package:can_new_app/widgets/charge_task_card.dart';
+import 'package:can_new_app/widgets/stale_task_banner.dart';
+import 'package:can_new_app/widgets/notification_settings.dart';
+import 'package:can_new_app/screens/charge_task_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('notification permission remedy is shown only when denied', (
+    tester,
+  ) async {
+    var opened = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationPermissionCard(
+          state: const PushNotificationState(
+            initialized: true,
+            permissionLabel: '已拒絕',
+            statusMessage: '已啟用',
+          ),
+          onOpenSettings: () async => opened = true,
+        ),
+      ),
+    );
+
+    expect(find.text('通知未開啟'), findsOneWidget);
+    expect(find.text('未開啟通知可能錯過新的站務任務。請到系統設定允許通知。'), findsOneWidget);
+    await tester.tap(find.text('開啟通知設定'));
+    expect(opened, isTrue);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: NotificationPermissionCard(
+          state: PushNotificationState(
+            initialized: true,
+            permissionLabel: '已允許',
+            statusMessage: '已啟用',
+          ),
+          onOpenSettings: _noopAsync,
+        ),
+      ),
+    );
+    expect(find.text('通知未開啟'), findsNothing);
+  });
+
+  testWidgets('stale task banner keeps retry available', (tester) async {
+    var retries = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StaleTaskBanner(
+          message: '目前無法更新，以下是上次載入的任務',
+          onRetry: () => retries++,
+        ),
+      ),
+    );
+
+    expect(find.text('目前無法更新，以下是上次載入的任務'), findsOneWidget);
+    await tester.tap(find.text('重試'));
+    expect(retries, 1);
+  });
+
+  testWidgets('Charge typed task renders a staff-facing status', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChargeTaskCard(
+          task: const ChargeTask(
+            serialNumber: 7,
+            deviceCode: 'CH-07',
+            station: 'A12',
+            status: ChargeTaskStatus.processing,
+            faultDescription: '無法充電',
+            faultType: '設備異常',
+            resolutionType: 0,
+            isDisable: false,
+            createdAt: '',
+            updatedAt: '',
+          ),
+          onTap: _noop,
+        ),
+      ),
+    );
+
+    expect(find.text('處理中'), findsOneWidget);
+    expect(find.text('processing'), findsNothing);
+  });
+
+  testWidgets(
+    'Charge completion requires confirmation and remains safe at large text',
+    (tester) async {
+      final api = FakeChargeApi();
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+            child: ChargeTaskDetailScreen(
+              api: api,
+              task: const ChargeTask(
+                serialNumber: 8,
+                deviceCode: 'CH-08-long-device-code',
+                station: 'A12',
+                status: ChargeTaskStatus.processing,
+                faultDescription: '設備無法正常提供充電服務',
+                faultType: '設備異常',
+                resolutionType: 0,
+                isDisable: false,
+                createdAt: '',
+                updatedAt: '',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.scrollUntilVisible(find.text('標記完成'), 300);
+      await tester.tap(find.text('標記完成'));
+      await tester.pump();
+      expect(find.text('確認標記完成？'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, '取消'));
+      await tester.pumpAndSettle();
+      expect(api.updateCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  test(
+    'notification settings opener selects mobile, fallback, and failure paths',
+    () async {
+      var calls = 0;
+      expect(
+        await openNotificationSettings(
+          isAndroid: true,
+          opener: () async => calls++,
+        ),
+        NotificationSettingsResult.requested,
+      );
+      expect(calls, 1);
+      expect(
+        await openNotificationSettings(isAndroid: false, isIOS: false),
+        NotificationSettingsResult.unsupported,
+      );
+      expect(
+        await openNotificationSettings(
+          isIOS: true,
+          opener: () async => throw StateError('settings unavailable'),
+        ),
+        NotificationSettingsResult.failed,
+      );
+    },
+  );
+
+  testWidgets('Charge does not offer completion for cancelled tasks', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChargeTaskDetailScreen(
+          api: FakeChargeApi(),
+          task: const ChargeTask(
+            serialNumber: 9,
+            deviceCode: 'CH-09',
+            station: 'A12',
+            status: ChargeTaskStatus.cancelled,
+            faultDescription: '',
+            faultType: '',
+            resolutionType: 0,
+            isDisable: false,
+            createdAt: '',
+            updatedAt: '',
+          ),
+        ),
+      ),
+    );
+    expect(find.text('已取消'), findsNWidgets(2));
+    expect(find.text('標記完成'), findsNothing);
+  });
+
+  testWidgets(
+    'Charge does not offer completion for unknown or disabled tasks',
+    (tester) async {
+      final cases = [
+        const ChargeTask(
+          serialNumber: 10,
+          deviceCode: 'CH-10',
+          station: 'A12',
+          status: ChargeTaskStatus.unknown,
+          faultDescription: '',
+          faultType: '',
+          resolutionType: 0,
+          isDisable: false,
+          createdAt: '',
+          updatedAt: '',
+        ),
+        const ChargeTask(
+          serialNumber: 11,
+          deviceCode: 'CH-11',
+          station: 'A12',
+          status: ChargeTaskStatus.processing,
+          faultDescription: '',
+          faultType: '',
+          resolutionType: 0,
+          isDisable: true,
+          createdAt: '',
+          updatedAt: '',
+        ),
+      ];
+      for (final task in cases) {
+        await tester.pumpWidget(
+          KeyedSubtree(
+            key: UniqueKey(),
+            child: MaterialApp(
+              home: ChargeTaskDetailScreen(api: FakeChargeApi(), task: task),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('標記完成'), findsNothing);
+      }
+    },
+  );
+
+  testWidgets('local invalidation and routing precede pending remote cleanup', (
+    tester,
+  ) async {
+    final api = FakeApi()..restoreToken('old-token');
+    final push = _BlockingPushNotificationService();
+    final observer = _RecordingNavigatorObserver();
+    final store = MemorySessionStore()
+      ..session = const AppSession(
+        token: 'old-token',
+        user: UserProfile(
+          name: 'Staff',
+          stationId: 'A17',
+          sectionId: null,
+          role: 'staff',
+        ),
+        deviceId: 'device',
+      );
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [observer],
+        home: SettingsScreen(
+          api: api,
+          user: store.session!.user,
+          deviceId: 'device',
+          pushService: push,
+          sessionStore: store,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認登出'));
+    await push.started.future;
+
+    expect(api.token, isNull);
+    expect(observer.pushCount, greaterThanOrEqualTo(4));
+
+    push.release.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('local logout commit failure does not start remote cleanup', (
+    tester,
+  ) async {
+    final api = FakeApi();
+    final store = MemorySessionStore()
+      ..session = const AppSession(
+        token: 'token',
+        user: UserProfile(
+          name: 'Staff',
+          stationId: 'A17',
+          sectionId: null,
+          role: 'staff',
+        ),
+        deviceId: 'device',
+      )
+      ..clearSessionFails = true;
+    final push = RecordingPushNotificationService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          api: api,
+          user: store.session!.user,
+          deviceId: 'device',
+          pushService: push,
+          sessionStore: store,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認登出'));
+    await tester.pumpAndSettle();
+
+    expect(store.session, isNotNull);
+    expect(api.logoutCalls, 0);
+    expect(push.unsubscribeCalls, 0);
+  });
+
   testWidgets('validates login inputs', (tester) async {
     await tester.pumpWidget(_app(FakeApi()));
     await tester.pumpAndSettle();
@@ -52,15 +364,67 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.loggedInAccount, 'staff01');
-    expect(find.text('任務列表'), findsOneWidget);
+    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
     expect(find.text('領航站 出入口'), findsOneWidget);
     expect(find.text('待處理'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('reply-105')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
     expect(api.repliedTaskIds, [105]);
   });
+
+  testWidgets(
+    'Limabang locks every task-card action during a confirmed mutation',
+    (tester) async {
+      final api = FakeApi(
+        tasks: [
+          _task(id: 201),
+          _task(id: 202, status: TaskStatus.replied),
+        ],
+      );
+      api.mutationCompleter = Completer<void>();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: TasksScreen(
+            api: api,
+            user: const UserProfile(
+              name: 'Staff',
+              stationId: 'A17',
+              sectionId: null,
+              role: 'staff',
+            ),
+            deviceId: 'device',
+            pushService: PushNotificationService(),
+            sessionStore: MemorySessionStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('reply-201')));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, '確認'));
+      await tester.pump();
+
+      for (final key in [
+        'reply-201',
+        'complete-normal-202',
+        'complete-empty-202',
+      ]) {
+        final button = tester.widget(find.byKey(Key(key)));
+        expect(
+          (button as dynamic).onPressed,
+          isNull,
+          reason: '$key must be locked',
+        );
+      }
+      api.mutationCompleter!.complete();
+      await tester.pumpAndSettle();
+    },
+  );
 
   testWidgets('returns from task list to system selection', (tester) async {
     final api = FakeApi();
@@ -75,7 +439,7 @@ void main() {
     await tester.tap(find.byKey(const Key('loginButton')));
     await tester.pumpAndSettle();
 
-    expect(find.text('任務列表'), findsOneWidget);
+    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
 
     await tester.tap(find.byTooltip('返回系統選擇'));
     await tester.pumpAndSettle();
@@ -100,6 +464,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('complete-empty-49')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
     expect(api.completedTasks, {49: CompletionResult.noPassenger});
@@ -194,7 +560,7 @@ void main() {
     await tester.tap(find.text('立碼幫幫忙'));
     await tester.pumpAndSettle();
 
-    expect(find.text('任務列表'), findsOneWidget);
+    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(find.text('領航站 出入口'), findsOneWidget);
   });
@@ -229,7 +595,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(canApi.loggedInAccount, 'can01');
-    expect(find.text('任務列表'), findsOneWidget);
+    expect(find.text('CAN・任務列表'), findsOneWidget);
     expect(find.textContaining('A12-B1-M1-1'), findsOneWidget);
     expect(find.textContaining('A12-B2-M2-2'), findsOneWidget);
   });
@@ -256,7 +622,9 @@ void main() {
 
     expect(find.textContaining('A12-B1-M1-1'), findsOneWidget);
 
-    await tester.tap(find.text('標記完成').first);
+    await tester.tap(find.text('完成清潔').first);
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認結案'));
     await tester.pumpAndSettle();
 
     expect(canApi.completedSerialNumbers, [1]);
@@ -301,6 +669,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(sessionStore.session, isNotNull);
@@ -338,6 +707,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(sessionStore.canSession, isNull);
@@ -379,10 +749,11 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('設定'), findsOneWidget);
-    expect(find.text('登出失敗，請稍後再試'), findsOneWidget);
+    expect(find.text('登出失敗，工作階段仍保留；請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('canAccountField')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
     expect(sessionStore.canSession, same(canSession));
@@ -516,6 +887,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(sessionStore.session, isNull);
@@ -544,6 +916,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(pushService.unsubscribeCalls, 1);
@@ -573,10 +946,11 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('settingsLogoutButton')));
+    await _confirmLogout(tester);
     await tester.pumpAndSettle();
 
     expect(find.text('設定'), findsOneWidget);
-    expect(find.text('登出失敗，請稍後再試'), findsOneWidget);
+    expect(find.text('登出失敗，工作階段仍保留；請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
     expect(sessionStore.canSession, same(canSession));
@@ -627,6 +1001,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('reply-105')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('loginButton')), findsOneWidget);
@@ -655,8 +1031,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('任務列表'), findsOneWidget);
-    expect(find.text('登出失敗，請稍後再試'), findsOneWidget);
+    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('登入狀態清除失敗，請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
     expect(sessionStore.canSession, same(canSession));
@@ -683,15 +1059,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('reply-105')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
-    expect(find.text('任務列表'), findsOneWidget);
-    expect(find.text('登出失敗，請稍後再試'), findsOneWidget);
+    expect(find.text('立碼幫幫忙・任務列表'), findsOneWidget);
+    expect(find.text('登入狀態清除失敗，請確認儲存空間後重試'), findsOneWidget);
     expect(find.byKey(const Key('loginButton')), findsNothing);
     expect(sessionStore.session, same(limabangSession));
     expect(sessionStore.canSession, same(canSession));
 
     sessionStore.clearSessionFails = false;
     await tester.tap(find.byKey(const Key('reply-105')));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
     expect(sessionStore.clearSessionCalls, 2);
@@ -718,12 +1098,21 @@ void main() {
 
     await tester.tap(find.byKey(const Key('reply-105')));
     await tester.pump();
-    await tester.tap(find.byKey(const Key('reply-106')));
+    await tester.tap(find.widgetWithText(FilledButton, '確認'));
     await tester.pumpAndSettle();
 
     expect(sessionStore.clearSessionCalls, 1);
     expect(find.byKey(const Key('loginButton')), findsOneWidget);
   });
+}
+
+void _noop() {}
+
+Future<void> _noopAsync() async {}
+
+Future<void> _confirmLogout(WidgetTester tester) async {
+  await tester.pump();
+  await tester.tap(find.widgetWithText(FilledButton, '確認登出'));
 }
 
 const _limabangUser = UserProfile(
@@ -756,9 +1145,44 @@ Widget _app(FakeApi api) {
   );
 }
 
+class FakeChargeApi implements ChargeApi {
+  var fetchCalls = 0;
+  var updateCalls = 0;
+  @override
+  String? token;
+  @override
+  void restoreToken(String token) => this.token = token;
+  @override
+  void invalidateToken({String? token}) => this.token = null;
+  @override
+  Future<ChargeUserProfile> login({
+    required String account,
+    required String password,
+  }) => throw UnimplementedError();
+  @override
+  Future<void> logout({String? token}) async {}
+  @override
+  Future<List<ChargeTask>> fetchTasks() async {
+    fetchCalls++;
+    return const [];
+  }
+
+  @override
+  Future<ChargeTask> fetchTask(int serialNumber) => throw UnimplementedError();
+  @override
+  Future<void> updateTask(
+    int serialNumber, {
+    required ChargeTaskStatus status,
+    required ChargeResolutionType resolutionType,
+  }) async {
+    updateCalls++;
+  }
+}
+
 class MemorySessionStore implements SessionStore {
   AppSession? session;
   CanSession? canSession;
+  ChargeSession? chargeSession;
   var deviceId = 'test-device-id';
   var clearSessionCalls = 0;
   var clearSessionFails = false;
@@ -799,6 +1223,19 @@ class MemorySessionStore implements SessionStore {
     }
     canSession = null;
   }
+
+  @override
+  Future<ChargeSession?> loadChargeSession() async => chargeSession;
+
+  @override
+  Future<void> saveChargeSession(ChargeSession session) async {
+    chargeSession = session;
+  }
+
+  @override
+  Future<void> clearChargeSession() async {
+    chargeSession = null;
+  }
 }
 
 class RecordingPushNotificationService extends PushNotificationService {
@@ -820,6 +1257,29 @@ class RecordingPushNotificationService extends PushNotificationService {
   }
 }
 
+class _BlockingPushNotificationService
+    extends RecordingPushNotificationService {
+  final started = Completer<void>();
+  final release = Completer<void>();
+
+  @override
+  Future<void> unsubscribeFromTopic(String topic) async {
+    started.complete();
+    await release.future;
+    await super.unsubscribeFromTopic(topic);
+  }
+}
+
+class _RecordingNavigatorObserver extends NavigatorObserver {
+  var pushCount = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    pushCount++;
+    super.didPush(route, previousRoute);
+  }
+}
+
 class FakeApi implements LimabangApi {
   FakeApi({List<AssistTask>? tasks}) : tasks = tasks ?? [_task(id: 105)];
 
@@ -830,9 +1290,11 @@ class FakeApi implements LimabangApi {
   var loggedOut = false;
   var logoutCalls = 0;
   var logoutFails = false;
+  var fetchTasksCalls = 0;
   var fetchFailsSessionExpired = false;
   var replyFailsSessionExpired = false;
   var replyFailureDelay = Duration.zero;
+  Completer<void>? mutationCompleter;
 
   @override
   String? token;
@@ -840,6 +1302,11 @@ class FakeApi implements LimabangApi {
   @override
   void restoreToken(String token) {
     this.token = token;
+  }
+
+  @override
+  void invalidateToken({String? token}) {
+    if (token == null || this.token == token) this.token = null;
   }
 
   @override
@@ -861,17 +1328,18 @@ class FakeApi implements LimabangApi {
   }
 
   @override
-  Future<void> logout() async {
+  Future<void> logout({String? token}) async {
     logoutCalls++;
     loggedOut = true;
     if (logoutFails) {
       throw StateError('remote logout failed');
     }
-    token = null;
+    if (token == null || this.token == token) this.token = null;
   }
 
   @override
   Future<List<AssistTask>> fetchTasks() async {
+    fetchTasksCalls++;
     if (fetchFailsSessionExpired) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
       throw const SessionExpiredException();
@@ -881,6 +1349,7 @@ class FakeApi implements LimabangApi {
 
   @override
   Future<void> replyTask(int id) async {
+    if (mutationCompleter != null) await mutationCompleter!.future;
     if (replyFailsSessionExpired) {
       await Future<void>.delayed(replyFailureDelay);
       throw const SessionExpiredException();
@@ -890,6 +1359,7 @@ class FakeApi implements LimabangApi {
 
   @override
   Future<void> completeTask(int id, CompletionResult result) async {
+    if (mutationCompleter != null) await mutationCompleter!.future;
     completedTasks[id] = result;
   }
 }
@@ -943,6 +1413,11 @@ class FakeCanApi implements CanApi {
   }
 
   @override
+  void invalidateToken({String? token}) {
+    if (token == null || this.token == token) this.token = null;
+  }
+
+  @override
   Future<CanUserProfile> login({
     required String account,
     required String password,
@@ -953,11 +1428,11 @@ class FakeCanApi implements CanApi {
   }
 
   @override
-  Future<void> logout() async {
+  Future<void> logout({String? token}) async {
     if (logoutFails) {
       throw StateError('remote logout failed');
     }
-    token = null;
+    if (token == null || this.token == token) this.token = null;
   }
 
   @override
