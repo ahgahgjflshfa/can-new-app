@@ -345,7 +345,7 @@ void main() {
     await tester.tap(find.byKey(const Key('loginButton')));
     await tester.pump();
 
-    expect(find.text('請輸入員工帳號'), findsOneWidget);
+    expect(find.text('請輸入帳號'), findsOneWidget);
     expect(find.text('請輸入密碼'), findsOneWidget);
   });
 
@@ -474,7 +474,8 @@ void main() {
   testWidgets('shows advanced settings and exports logs', (tester) async {
     AppLogger.clear();
     ApiLogStore.clear();
-    PushNotificationHistory.clear();
+    // Memory-only reset; disk I/O is covered by push_history_test.dart.
+    PushNotificationHistory.entries.value = <PushNotificationHistoryEntry>[];
     AppLogger.log('Test', 'sample log line');
     final api = FakeApi();
     final pushService = PushNotificationService();
@@ -1077,6 +1078,7 @@ void main() {
     expect(sessionStore.clearSessionCalls, 2);
     expect(find.byKey(const Key('loginButton')), findsOneWidget);
   });
+
 
   testWidgets('concurrent expired task failures recover once', (tester) async {
     final api = FakeApi(tasks: [_task(id: 105), _task(id: 106)])

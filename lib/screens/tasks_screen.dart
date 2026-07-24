@@ -38,15 +38,17 @@ class TasksScreen extends StatefulWidget {
   State<TasksScreen> createState() => _TasksScreenState();
 }
 
-class _TasksScreenState extends State<TasksScreen> {
+class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
   late Future<List<AssistTask>> _tasksFuture;
   List<AssistTask>? _lastTasks;
   var _busyTaskId = 0;
   var _sessionRecoveryStarted = false;
+  DateTime? _lastResumeRefreshAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
     if (widget.user.stationId != null) {
@@ -56,8 +58,16 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.pushService.refreshSignal.removeListener(_refreshFromPush);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshFromResume();
+    }
   }
 
   @override
@@ -211,14 +221,14 @@ class _TasksScreenState extends State<TasksScreen> {
 
   Future<void> _confirmReply(AssistTask task) async {
     final confirmed = await _confirmAction(
-      title: '確認接案？',
-      message: '接案後，這筆任務會進入處理中狀態。',
+      title: '前往協助？',
+      message: '確認後會標記為處理中。',
     );
     if (confirmed) {
       await _runTaskAction(
         task.id,
         () => widget.api.replyTask(task.id),
-        '已確認接案',
+        '已前往協助',
       );
     }
   }
@@ -229,14 +239,16 @@ class _TasksScreenState extends State<TasksScreen> {
   ) async {
     final noPassenger = result == CompletionResult.noPassenger;
     final confirmed = await _confirmAction(
-      title: noPassenger ? '確認以現場無人結案？' : '確認正常完成並結案？',
-      message: noPassenger ? '結案後任務將不再顯示為待處理，請確認現場確實無人。' : '結案後任務將不再顯示為待處理。',
+      title: noPassenger ? '現場無人，結束這筆？' : '確認協助完成？',
+      message: noPassenger
+          ? '結束後這筆會從待處理移除，請確認現場確實無人。'
+          : '結束後這筆會從待處理移除。',
     );
     if (confirmed) {
       await _runTaskAction(
         task.id,
         () => widget.api.completeTask(task.id, result),
-        noPassenger ? '已以現場無人結案' : '已正常完成結案',
+        noPassenger ? '已標記現場無人' : '已完成協助',
       );
     }
   }
@@ -362,10 +374,20 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   void _refreshFromPush() {
-    if (mounted &&
-        widget.pushService.refreshSignal.value?.system == PushSystem.limabang) {
+    if (mounted && widget.pushService.shouldRefreshFor(PushSystem.limabang)) {
       _refresh();
     }
+  }
+
+  void _refreshFromResume() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastResumeRefreshAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastResumeRefreshAt = now;
+    _refresh();
   }
 }
 

@@ -35,22 +35,34 @@ class ChargeTasksScreen extends StatefulWidget {
   State<ChargeTasksScreen> createState() => _ChargeTasksScreenState();
 }
 
-class _ChargeTasksScreenState extends State<ChargeTasksScreen> {
+class _ChargeTasksScreenState extends State<ChargeTasksScreen>
+    with WidgetsBindingObserver {
   late Future<List<ChargeTask>> _tasksFuture;
   String? _error;
   List<ChargeTask>? _lastTasks;
+  DateTime? _lastResumeRefreshAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
+    widget.pushService.subscribeToTopic(widget.user.chargeTopic);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.pushService.refreshSignal.removeListener(_refreshFromPush);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshFromResume();
+    }
   }
 
   @override
@@ -184,10 +196,20 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen> {
   void _refresh() => setState(() => _tasksFuture = _loadTasks());
 
   void _refreshFromPush() {
-    if (mounted &&
-        widget.pushService.refreshSignal.value?.system == PushSystem.charge) {
+    if (mounted && widget.pushService.shouldRefreshFor(PushSystem.charge)) {
       _refresh();
     }
+  }
+
+  void _refreshFromResume() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastResumeRefreshAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastResumeRefreshAt = now;
+    _refresh();
   }
 
   void _returnToSelection() =>

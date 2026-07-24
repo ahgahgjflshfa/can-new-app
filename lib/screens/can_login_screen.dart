@@ -92,12 +92,12 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
                       controller: _accountController,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
-                        labelText: '員工帳號',
+                        labelText: '帳號',
                         prefixIcon: Icon(Icons.badge_outlined),
                       ),
                       validator: (value) =>
                           value == null || value.trim().isEmpty
-                          ? '請輸入員工帳號'
+                          ? '請輸入帳號'
                           : null,
                     ),
                     const SizedBox(height: 16),
@@ -167,8 +167,14 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
       if (token == null || token.isEmpty) {
         throw const ApiException('登入成功但未取得 Token');
       }
-      if (user.topic != null) {
-        await widget.pushService.subscribeToTopic(user.topic!);
+      final station = user.station?.trim();
+      final topic = user.topic?.trim();
+      if (topic != null && topic.isNotEmpty) {
+        await widget.pushService.subscribeToTopic(topic);
+      } else if (station != null && station.isNotEmpty) {
+        await widget.pushService.subscribeToTopic(
+          widget.pushService.topicFor(PushSystem.can, station),
+        );
       }
       await widget.sessionStore.saveCanSession(
         CanSession(token: token, user: user, deviceId: deviceId),

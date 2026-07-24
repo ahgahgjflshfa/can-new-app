@@ -37,27 +37,45 @@ class CanTasksScreen extends StatefulWidget {
   State<CanTasksScreen> createState() => _CanTasksScreenState();
 }
 
-class _CanTasksScreenState extends State<CanTasksScreen> {
+class _CanTasksScreenState extends State<CanTasksScreen>
+    with WidgetsBindingObserver {
   late Future<List<CanTask>> _tasksFuture;
   String? _loadError;
   List<CanTask>? _lastTasks;
   var _busySerialNumber = 0;
+  DateTime? _lastResumeRefreshAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
     final station = widget.user.station?.trim();
-    if (station != null && station.isNotEmpty && widget.user.topic != null) {
-      widget.pushService.subscribeToTopic(widget.user.topic!);
+    if (station != null && station.isNotEmpty) {
+      final topic = widget.user.topic?.trim();
+      if (topic != null && topic.isNotEmpty) {
+        widget.pushService.subscribeToTopic(topic);
+      } else {
+        widget.pushService.subscribeToTopic(
+          widget.pushService.topicFor(PushSystem.can, station),
+        );
+      }
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.pushService.refreshSignal.removeListener(_refreshFromPush);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshFromResume();
+    }
   }
 
   @override
@@ -292,10 +310,20 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
   }
 
   void _refreshFromPush() {
-    if (mounted &&
-        widget.pushService.refreshSignal.value?.system == PushSystem.can) {
+    if (mounted && widget.pushService.shouldRefreshFor(PushSystem.can)) {
       _refresh();
     }
+  }
+
+  void _refreshFromResume() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastResumeRefreshAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+      return;
+    }
+    _lastResumeRefreshAt = now;
+    _refresh();
   }
 
   var _sessionRecoveryStarted = false;
@@ -312,9 +340,15 @@ class _CanTasksScreenState extends State<CanTasksScreen> {
       return;
     }
     widget.api.invalidateToken(token: rejectedToken);
-    final topic = widget.user.topic;
-    if (topic != null && topic.isNotEmpty) {
-      unawaited(_cleanupCanTopic(topic));
+    final canTopic = widget.user.topic?.trim();
+    final canStation = widget.user.station?.trim();
+    final topicToDrop = (canTopic != null && canTopic.isNotEmpty)
+        ? canTopic
+        : (canStation != null && canStation.isNotEmpty)
+        ? widget.pushService.topicFor(PushSystem.can, canStation)
+        : null;
+    if (topicToDrop != null) {
+      unawaited(_cleanupCanTopic(topicToDrop));
     }
     if (!mounted) return;
     Navigator.of(context).popUntil((route) => route.isFirst);

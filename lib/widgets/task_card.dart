@@ -64,7 +64,7 @@ class TaskCard extends StatelessWidget {
                 ),
                 _TimeLabel(
                   icon: Icons.directions_walk,
-                  label: '確認',
+                  label: '協助',
                   value: _formatTime(task.repliedAt),
                 ),
                 _TimeLabel(
@@ -87,21 +87,21 @@ class TaskCard extends StatelessWidget {
                           key: Key('reply-${task.id}'),
                           onPressed: locked ? null : onReply,
                           icon: const Icon(Icons.notifications_active_outlined),
-                          label: const Text('確認接案'),
+                          label: const Text('前往協助'),
                         ),
                       if (onCompleteNormal != null)
                         FilledButton.icon(
                           key: Key('complete-normal-${task.id}'),
                           onPressed: locked ? null : onCompleteNormal,
                           icon: const Icon(Icons.done),
-                          label: const Text('正常完成並結案'),
+                          label: const Text('協助完成'),
                         ),
                       if (onCompleteNoPassenger != null)
                         OutlinedButton.icon(
                           key: Key('complete-empty-${task.id}'),
                           onPressed: locked ? null : onCompleteNoPassenger,
                           icon: const Icon(Icons.person_off_outlined),
-                          label: const Text('現場無人（結案）'),
+                          label: const Text('現場無人'),
                         ),
                     ],
                   ),

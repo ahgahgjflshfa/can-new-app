@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -177,7 +178,7 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
         '\n--- Session ---\nToken: ${api.token == null ? '未登入' : '已取得'}',
       )
       ..writeln(
-        '\n--- Push Notification ---\nStatus: ${state.statusMessage}\nPermission: ${state.permissionLabel}\nFCM Token: ${state.fcmToken == null ? '無' : '已隱藏'}',
+        '\n--- Push Notification ---\nStatus: ${state.statusMessage}\nPermission: ${state.permissionLabel}\nFCM Token: ${state.fcmToken == null ? '無' : '已隱藏'}\nSubscribed topics: ${pushService.subscribedTopics.isEmpty ? '(none)' : pushService.subscribedTopics.join(', ')}',
       )
       ..writeln(
         '\n--- API Base ---\nURL: $chargeBaseUrl\nTimeout: ${chargeApiTimeout.inSeconds}s',
@@ -185,7 +186,10 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
       ..writeln(
         '\n--- API Logs ---\n${_formatApiLogs(ApiLogStore.entries.value)}',
       )
-      ..writeln('\n--- App Logs ---\n${AppLogger.exportText()}');
+      ..writeln('\n--- App Logs ---\n${AppLogger.exportText()}')
+      ..writeln(
+        '\n--- Push History ---\n${PushNotificationHistory.exportText()}',
+      );
     await Clipboard.setData(ClipboardData(text: text.toString()));
     if (context.mounted) showSnackBarMessage(context, 'Debug 資訊已複製到剪貼簿');
   }
@@ -193,7 +197,7 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
   Future<void> _confirmClear(
     BuildContext context,
     String label,
-    VoidCallback clear,
+    FutureOr<void> Function() clear,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -213,7 +217,8 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    clear();
+    await clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '$label已清除');
   }
 
@@ -237,8 +242,9 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
     ApiLogStore.clear();
-    PushNotificationHistory.clear();
+    await PushNotificationHistory.clear();
     AppLogger.clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '所有診斷紀錄已清除');
   }
 
@@ -281,7 +287,7 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
     BuildContext context,
     String title,
     String content,
-    VoidCallback clear,
+    FutureOr<void> Function() clear,
   ) {
     showModalBottomSheet<void>(
       context: context,

@@ -46,3 +46,7 @@ app.*.map.json
 
 # Local deepwork session state
 .slim/deepwork/
+
+# Local agent session state
+.omo/
+.sisyphus/

@@ -92,12 +92,12 @@ class _ChargeLoginScreenState extends State<ChargeLoginScreen> {
                       controller: _accountController,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
-                        labelText: '員工帳號',
+                        labelText: '帳號',
                         prefixIcon: Icon(Icons.badge_outlined),
                       ),
                       validator: (value) =>
                           value == null || value.trim().isEmpty
-                          ? '請輸入員工帳號'
+                          ? '請輸入帳號'
                           : null,
                     ),
                     const SizedBox(height: 16),

@@ -379,7 +379,7 @@ class AdvancedSettingsScreen extends StatelessWidget {
   Future<void> _confirmClear(
     BuildContext context,
     String label,
-    VoidCallback clear,
+    FutureOr<void> Function() clear,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -399,7 +399,8 @@ class AdvancedSettingsScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    clear();
+    await clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '$label已清除');
   }
 
@@ -423,8 +424,9 @@ class AdvancedSettingsScreen extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
     ApiLogStore.clear();
-    PushNotificationHistory.clear();
+    await PushNotificationHistory.clear();
     AppLogger.clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '所有診斷紀錄已清除');
   }
 
@@ -473,6 +475,9 @@ class AdvancedSettingsScreen extends StatelessWidget {
     buffer.writeln('Status: ${pushState.statusMessage}');
     buffer.writeln('Permission: ${pushState.permissionLabel}');
     buffer.writeln('FCM Token: ${pushState.fcmToken == null ? '無' : '已隱藏'}');
+    buffer.writeln(
+      'Subscribed topics: ${pushService.subscribedTopics.isEmpty ? '(none)' : pushService.subscribedTopics.join(', ')}',
+    );
     buffer.writeln('');
     buffer.writeln('--- API Base ---');
     buffer.writeln('URL: $limabangBaseUrl');
@@ -487,6 +492,9 @@ class AdvancedSettingsScreen extends StatelessWidget {
     buffer.writeln('');
     buffer.writeln('--- App Logs ---');
     buffer.writeln(AppLogger.exportText());
+    buffer.writeln('');
+    buffer.writeln('--- Push History ---');
+    buffer.writeln(PushNotificationHistory.exportText());
 
     await Clipboard.setData(ClipboardData(text: buffer.toString()));
     if (context.mounted) {

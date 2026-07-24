@@ -92,7 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '站務任務接單與結案系統',
+                      '無障礙求助服務',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
@@ -102,12 +102,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _accountController,
                       textInputAction: TextInputAction.next,
                       decoration: const InputDecoration(
-                        labelText: '員工帳號',
+                        labelText: '帳號',
                         prefixIcon: Icon(Icons.badge_outlined),
                       ),
                       validator: (value) =>
                           value == null || value.trim().isEmpty
-                          ? '請輸入員工帳號'
+                          ? '請輸入帳號'
                           : null,
                     ),
                     const SizedBox(height: 16),

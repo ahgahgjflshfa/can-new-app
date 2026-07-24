@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 
 import 'app.dart';
@@ -9,6 +10,9 @@ import 'services/session_store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Must be registered before runApp / any other async work that might
+  // receive a background message. Keep a single registration site.
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   final limabangApi = LimabangApiClient();
   final canApi = CanApiClient();
   final chargeApi = ChargeApiClient();

@@ -194,9 +194,16 @@ class _AccountSection extends StatelessWidget {
             messenger.showSnackBar(const SnackBar(content: Text('已登出')));
             unawaited(() async {
               var remoteCleanupFailed = false;
-              if (user.topic != null) {
+              final canTopic = user.topic?.trim();
+              final canStation = user.station?.trim();
+              final topicToDrop = (canTopic != null && canTopic.isNotEmpty)
+                  ? canTopic
+                  : (canStation != null && canStation.isNotEmpty)
+                  ? pushService.topicFor(PushSystem.can, canStation)
+                  : null;
+              if (topicToDrop != null) {
                 try {
-                  await pushService.unsubscribeFromTopic(user.topic!);
+                  await pushService.unsubscribeFromTopic(topicToDrop);
                 } catch (_) {
                   remoteCleanupFailed = true;
                 }
@@ -379,7 +386,7 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
   Future<void> _confirmClear(
     BuildContext context,
     String label,
-    VoidCallback clear,
+    FutureOr<void> Function() clear,
   ) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -399,7 +406,8 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true || !context.mounted) return;
-    clear();
+    await clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '$label已清除');
   }
 
@@ -423,8 +431,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     );
     if (confirmed != true || !context.mounted) return;
     ApiLogStore.clear();
-    PushNotificationHistory.clear();
+    await PushNotificationHistory.clear();
     AppLogger.clear();
+    if (!context.mounted) return;
     showSnackBarMessage(context, '所有診斷紀錄已清除');
   }
 
@@ -473,6 +482,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     buffer.writeln('Status: ${pushState.statusMessage}');
     buffer.writeln('Permission: ${pushState.permissionLabel}');
     buffer.writeln('FCM Token: ${pushState.fcmToken == null ? '無' : '已隱藏'}');
+    buffer.writeln(
+      'Subscribed topics: ${pushService.subscribedTopics.isEmpty ? '(none)' : pushService.subscribedTopics.join(', ')}',
+    );
     buffer.writeln('');
     buffer.writeln('--- API Base ---');
     buffer.writeln('URL: $canBaseUrl');
@@ -487,6 +499,9 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
     buffer.writeln('');
     buffer.writeln('--- App Logs ---');
     buffer.writeln(AppLogger.exportText());
+    buffer.writeln('');
+    buffer.writeln('--- Push History ---');
+    buffer.writeln(PushNotificationHistory.exportText());
 
     await Clipboard.setData(ClipboardData(text: buffer.toString()));
     if (context.mounted) {

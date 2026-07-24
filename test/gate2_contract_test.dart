@@ -57,7 +57,7 @@ void main() {
 
       void listen(PushSystem system, void Function() refresh) {
         push.refreshSignal.addListener(() {
-          if (push.refreshSignal.value?.system == system) refresh();
+          if (push.shouldRefreshFor(system)) refresh();
         });
       }
 
@@ -83,8 +83,23 @@ void main() {
       expect(chargeRefreshes, 1);
       expect(chargeApi.refreshCalls, 1);
       expect(canRefreshes, 2);
+
+      // Unknown/missing system refreshes ALL listeners once each.
+      push.publishForTesting(system: null);
+      expect(canRefreshes, 3);
+      expect(canApi.refreshCalls, 3);
+      expect(chargeRefreshes, 2);
+      expect(chargeApi.refreshCalls, 2);
+      expect(limabangRefreshes, 1);
     },
   );
+
+  test('topicFor matches production topic naming per system', () {
+    final push = PushNotificationService();
+    expect(push.topicFor(PushSystem.limabang, 'A12'), 'A12');
+    expect(push.topicFor(PushSystem.can, 'A12'), 'can_A12');
+    expect(push.topicFor(PushSystem.charge, 'A12'), 'charge_A12');
+  });
 
   testWidgets(
     'null-id notification sequences route repeatedly and stored sessions select flows',
