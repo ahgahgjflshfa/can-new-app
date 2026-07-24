@@ -124,11 +124,6 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
                           value == null || value.isEmpty ? '請輸入密碼' : null,
                       onFieldSubmitted: (_) => _submit(),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '無法登入時，請確認帳號、密碼與網路；仍無法登入請聯絡值班主管。',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
                     const SizedBox(height: 16),
                     FilledButton.icon(
                       key: const Key('canLoginButton'),
