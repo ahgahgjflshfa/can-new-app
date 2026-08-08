@@ -103,6 +103,37 @@ void main() {
     },
   );
 
+  test(
+    'CAN profile preserves regional login fields and reads legacy payloads',
+    () {
+      final regional = CanUserProfile.fromJson(const {
+        'account': 'North',
+        'station': null,
+        'accessScope': 'region',
+        'region': 'north',
+        'topic': 'can_region_north',
+        'system': 'can',
+      });
+
+      expect(regional.toJson(), {
+        'account': 'North',
+        'station': null,
+        'accessScope': 'region',
+        'region': 'north',
+        'topic': 'can_region_north',
+        'system': 'can',
+      });
+
+      final legacy = CanUserProfile.fromJson(const {
+        'account': 'can01',
+        'station': 'A01',
+        'topic': 'can_A01',
+      });
+      expect(legacy.accessScope, 'station');
+      expect(legacy.system, 'can');
+    },
+  );
+
   test('cleanup deletion faults do not undo a committed tombstone', () async {
     final storage = _MemoryStorage()
       ..values['limabang.token'] = 'legacy'

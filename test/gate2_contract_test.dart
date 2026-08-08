@@ -440,9 +440,7 @@ class _CanApi implements CanApi {
   @override
   Future<void> logout({String? token}) async {}
   @override
-  Future<List<CanTask>> fetchTasks() async => tasks;
-  @override
-  Future<List<CanTask>> fetchTasksByStation(String station) async {
+  Future<List<CanTask>> fetchTasks() async {
     if (expireOnFetch) throw const SessionExpiredException();
     return tasks;
   }

@@ -760,35 +760,7 @@ void main() {
     expect(sessionStore.canSession, same(canSession));
   });
 
-  testWidgets('CAN missing station fails closed on retry', (tester) async {
-    final api = FakeCanApi();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CanTasksScreen(
-          api: api,
-          user: const CanUserProfile(
-            account: 'can01',
-            station: '  ',
-            topic: 'can_A12',
-          ),
-          deviceId: 'device',
-          pushService: PushNotificationService(),
-          sessionStore: MemorySessionStore(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('帳號未設定站點，請至設定登出後重新登入'), findsOneWidget);
-    expect(api.fetchTasksCalls, 0);
-    expect(api.fetchTasksByStationCalls, 0);
-    await tester.tap(find.text('重試'));
-    await tester.pumpAndSettle();
-    expect(api.fetchTasksCalls, 0);
-    expect(api.fetchTasksByStationCalls, 0);
-  });
-
-  testWidgets('CAN null station fails closed on init and retry', (
+  testWidgets('CAN blank station loads tasks through the scoped endpoint', (
     tester,
   ) async {
     final api = FakeCanApi();
@@ -798,8 +770,10 @@ void main() {
           api: api,
           user: const CanUserProfile(
             account: 'can01',
-            station: null,
-            topic: 'can_A12',
+            station: '  ',
+            topic: 'can_region_north',
+            accessScope: 'region',
+            region: 'north',
           ),
           deviceId: 'device',
           pushService: PushNotificationService(),
@@ -809,44 +783,42 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('帳號未設定站點，請至設定登出後重新登入'), findsOneWidget);
-    expect(api.fetchTasksCalls, 0);
-    expect(api.fetchTasksByStationCalls, 0);
-    await tester.tap(find.text('重試'));
-    await tester.pumpAndSettle();
-    expect(api.fetchTasksCalls, 0);
-    expect(api.fetchTasksByStationCalls, 0);
+    expect(api.fetchTasksCalls, 1);
+    expect(find.text('帳號未設定站點，請至設定登出後重新登入'), findsNothing);
   });
 
-  testWidgets('CAN invalid station never subscribes to a topic', (
+  testWidgets(
+    'CAN null station subscribes to its backend topic and loads tasks',
+    (tester) async {
+      final api = FakeCanApi();
+      final pushService = RecordingPushNotificationService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CanTasksScreen(
+            api: api,
+            user: const CanUserProfile(
+              account: 'North',
+              station: null,
+              topic: 'can_region_north',
+              accessScope: 'region',
+              region: 'north',
+            ),
+            deviceId: 'device',
+            pushService: pushService,
+            sessionStore: MemorySessionStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(api.fetchTasksCalls, 1);
+      expect(pushService.subscribeCalls, 1);
+    },
+  );
+
+  testWidgets('CAN station account uses GET task and station-topic fallback', (
     tester,
   ) async {
-    final api = FakeCanApi();
-    final pushService = RecordingPushNotificationService();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CanTasksScreen(
-          api: api,
-          user: const CanUserProfile(
-            account: 'can01',
-            station: '  ',
-            topic: 'can_A12',
-          ),
-          deviceId: 'device',
-          pushService: pushService,
-          sessionStore: MemorySessionStore(),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(pushService.subscribeCalls, 0);
-    await tester.tap(find.text('重試'));
-    await tester.pumpAndSettle();
-    expect(pushService.subscribeCalls, 0);
-  });
-
-  testWidgets('CAN valid station uses only station endpoint', (tester) async {
     final api = FakeCanApi();
     await tester.pumpWidget(
       MaterialApp(
@@ -865,9 +837,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(api.fetchTasksCalls, 0);
-    expect(api.fetchTasksByStationCalls, 1);
-    expect(api.requestedStations, ['A12']);
+    expect(api.fetchTasksCalls, 1);
   });
 
   testWidgets('Limabang logout clears only Limabang and navigates to login', (
@@ -1078,7 +1048,6 @@ void main() {
     expect(sessionStore.clearSessionCalls, 2);
     expect(find.byKey(const Key('loginButton')), findsOneWidget);
   });
-
 
   testWidgets('concurrent expired task failures recover once', (tester) async {
     final api = FakeApi(tasks: [_task(id: 105), _task(id: 106)])
@@ -1373,8 +1342,6 @@ class FakeCanApi implements CanApi {
   final List<int> completedSerialNumbers = [];
   String? loggedInAccount;
   var fetchTasksCalls = 0;
-  var fetchTasksByStationCalls = 0;
-  final List<String> requestedStations = [];
   var logoutFails = false;
 
   static List<CanTask> _defaultTasks() => [
@@ -1441,15 +1408,6 @@ class FakeCanApi implements CanApi {
   Future<List<CanTask>> fetchTasks() async {
     fetchTasksCalls++;
     return _tasks.where((t) => !t.isDone).toList(growable: false);
-  }
-
-  @override
-  Future<List<CanTask>> fetchTasksByStation(String stationCode) async {
-    fetchTasksByStationCalls++;
-    requestedStations.add(stationCode);
-    return _tasks
-        .where((t) => t.station == stationCode && !t.isDone)
-        .toList(growable: false);
   }
 
   @override

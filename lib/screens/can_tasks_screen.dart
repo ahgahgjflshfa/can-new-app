@@ -52,15 +52,13 @@ class _CanTasksScreenState extends State<CanTasksScreen>
     _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
     final station = widget.user.station?.trim();
-    if (station != null && station.isNotEmpty) {
-      final topic = widget.user.topic?.trim();
-      if (topic != null && topic.isNotEmpty) {
-        widget.pushService.subscribeToTopic(topic);
-      } else {
-        widget.pushService.subscribeToTopic(
-          widget.pushService.topicFor(PushSystem.can, station),
-        );
-      }
+    final topic = widget.user.topic?.trim();
+    if (topic != null && topic.isNotEmpty) {
+      widget.pushService.subscribeToTopic(topic);
+    } else if (station != null && station.isNotEmpty) {
+      widget.pushService.subscribeToTopic(
+        widget.pushService.topicFor(PushSystem.can, station),
+      );
     }
   }
 
@@ -220,13 +218,8 @@ class _CanTasksScreenState extends State<CanTasksScreen>
   }
 
   Future<List<CanTask>> _loadTasks() async {
-    final station = widget.user.station?.trim();
-    if (station == null || station.isEmpty) {
-      _loadError = '帳號未設定站點，請至設定登出後重新登入';
-      return const <CanTask>[];
-    }
     _loadError = null;
-    final tasks = await widget.api.fetchTasksByStation(station);
+    final tasks = await widget.api.fetchTasks();
     _lastTasks = tasks;
     return tasks;
   }

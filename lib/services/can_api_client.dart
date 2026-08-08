@@ -89,17 +89,6 @@ class CanApiClient implements CanApi {
   }
 
   @override
-  Future<List<CanTask>> fetchTasksByStation(String stationCode) async {
-    final payload = await _send('GET', '/task/station/$stationCode');
-    if (payload is! List) {
-      throw const ApiException('任務資料格式錯誤');
-    }
-    return payload
-        .map((item) => CanTask.fromJson(_readMap(item, 'task')))
-        .toList(growable: false);
-  }
-
-  @override
   Future<void> updateTask(
     int serialNumber, {
     required bool isDone,

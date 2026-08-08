@@ -93,7 +93,9 @@ class _AccountSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final station = user.station ?? '未設定站點';
+    final station = user.station?.trim();
+    final scope = user.accessScope;
+    final region = user.region?.trim();
     return _SettingsSection(
       title: '帳號',
       children: [
@@ -117,8 +119,11 @@ class _AccountSection extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text('站點: $station'),
+                    Text('權限範圍: $scope'),
+                    if (station != null && station.isNotEmpty)
+                      Text('站點: $station'),
+                    if (region != null && region.isNotEmpty)
+                      Text('區段: $region'),
                   ],
                 ),
               ),
@@ -298,7 +303,11 @@ class AdvancedCanSettingsScreen extends StatelessWidget {
       title: '應用程式資訊',
       children: [
         _InfoTile(label: '版本', value: '1.0.1'),
-        _InfoTile(label: '站點', value: user.station ?? '未設定站別'),
+        _InfoTile(label: '權限範圍', value: user.accessScope),
+        if (user.station?.trim().isNotEmpty ?? false)
+          _InfoTile(label: '站點', value: user.station!.trim()),
+        if (user.region?.trim().isNotEmpty ?? false)
+          _InfoTile(label: '區段', value: user.region!.trim()),
       ],
     );
   }

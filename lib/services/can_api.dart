@@ -17,8 +17,6 @@ abstract class CanApi {
 
   Future<List<CanTask>> fetchTasks();
 
-  Future<List<CanTask>> fetchTasksByStation(String stationCode);
-
   Future<void> updateTask(
     int serialNumber, {
     required bool isDone,
