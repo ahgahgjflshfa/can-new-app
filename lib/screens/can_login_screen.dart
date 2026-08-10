@@ -80,12 +80,6 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
                             fontWeight: FontWeight.w800,
                           ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '垃圾桶溢滿回報處理系統',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
                     const SizedBox(height: 32),
                     TextFormField(
                       key: const Key('canAccountField'),

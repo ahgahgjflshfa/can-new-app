@@ -81,12 +81,6 @@ class _ChargeLoginScreenState extends State<ChargeLoginScreen> {
                             fontWeight: FontWeight.w800,
                           ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '充電設備異常與服務任務',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _accountController,

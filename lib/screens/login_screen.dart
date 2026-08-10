@@ -90,12 +90,6 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontWeight: FontWeight.w800,
                           ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '無障礙求助服務',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
                     const SizedBox(height: 32),
                     TextFormField(
                       key: const Key('accountField'),
