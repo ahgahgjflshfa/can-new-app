@@ -14,6 +14,7 @@ import '../theme/app_colors.dart';
 import '../widgets/error_state.dart';
 import '../widgets/snack_bar_message.dart';
 import '../widgets/stale_task_banner.dart';
+import '../widgets/task_status_chip.dart';
 import 'can_settings_screen.dart';
 import 'can_login_screen.dart';
 
@@ -228,8 +229,7 @@ class _CanTasksScreenState extends State<CanTasksScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(completed ? '確認完成清潔？' : '確認以無髒污結案？'),
-        content: Text(completed ? '確認後這筆溢滿回報將標記為已處理。' : '確認後這筆回報將以「無髒污」結案。'),
+        title: const Text('確定已完成'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -237,7 +237,7 @@ class _CanTasksScreenState extends State<CanTasksScreen>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('確認結案'),
+            child: const Text('確定'),
           ),
         ],
       ),
@@ -386,21 +386,26 @@ class _CanTaskCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final statusLabel = CanResolutionType.fromValue(task.resolutionType).label;
     final isPending = task.isPending;
+    final status = task.isDone
+        ? 'completed'
+        : task.isDisable
+        ? 'disabled'
+        : 'pending';
     final statusSurface = task.isDone
-        ? AppColors.canTaskCompletedSurface
+        ? AppColors.taskCompletedSurface
         : task.isDisable
-        ? AppColors.canTaskDisabledSurface
-        : null;
+        ? AppColors.taskDisabledSurface
+        : AppColors.taskPendingSurface;
     final statusBorder = task.isDone
-        ? AppColors.canTaskCompletedBorder
+        ? AppColors.taskCompletedBorder
         : task.isDisable
-        ? AppColors.canTaskDisabledBorder
-        : null;
+        ? AppColors.taskDisabledBorder
+        : AppColors.taskPendingBorder;
     final statusIconColor = task.isDone
-        ? AppColors.canTaskCompletedIcon
+        ? AppColors.taskCompleted
         : task.isDisable
-        ? AppColors.canTaskDisabledIcon
-        : Colors.orange;
+        ? AppColors.taskDisabled
+        : AppColors.taskPending;
 
     return Card(
       color: statusSurface,
@@ -434,11 +439,14 @@ class _CanTaskCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TaskStatusChip(label: statusLabel, status: status),
+            ),
+            const SizedBox(height: 10),
             Text('站點: ${task.station}'),
             const SizedBox(height: 4),
             Text('通知次數: ${task.informTime}'),
-            const SizedBox(height: 4),
-            Text('狀態: $statusLabel'),
             const SizedBox(height: 12),
             if (isPending) ...[
               if (busy) const LinearProgressIndicator(),

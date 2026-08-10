@@ -7,8 +7,6 @@ import 'package:can_new_app/models/can_task.dart';
 import 'package:can_new_app/models/can_user_profile.dart';
 import 'package:can_new_app/models/charge_session.dart';
 import 'package:can_new_app/models/charge_task.dart';
-import 'package:can_new_app/models/charge_task_status.dart';
-import 'package:can_new_app/models/charge_resolution_type.dart';
 import 'package:can_new_app/models/charge_user_profile.dart';
 import 'package:can_new_app/models/user_profile.dart';
 import 'package:can_new_app/services/api_exception.dart';
@@ -302,7 +300,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('完成清潔').first);
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, '確認結案'));
+      await tester.tap(find.widgetWithText(FilledButton, '確定'));
       await tester.pump();
       expect(
         find
@@ -486,9 +484,5 @@ class _ChargeApi implements ChargeApi {
   @override
   Future<ChargeTask> fetchTask(int serialNumber) => throw UnimplementedError();
   @override
-  Future<void> updateTask(
-    int serialNumber, {
-    required ChargeTaskStatus status,
-    required ChargeResolutionType resolutionType,
-  }) async {}
+  Future<void> updateTask(int serialNumber, {required bool isDone}) async {}
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/assist_task.dart';
 import '../models/task_status.dart';
 import '../theme/app_colors.dart';
+import 'task_status_chip.dart';
 
 class TaskCard extends StatelessWidget {
   const TaskCard({
@@ -24,7 +25,24 @@ class TaskCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cardColor = switch (task.status) {
+      TaskStatus.pending => AppColors.taskPendingSurface,
+      TaskStatus.replied => AppColors.taskConfirmedSurface,
+      TaskStatus.completed => AppColors.taskCompletedSurface,
+      TaskStatus.ignored => AppColors.taskDisabledSurface,
+    };
+    final cardBorder = switch (task.status) {
+      TaskStatus.pending => AppColors.taskPendingBorder,
+      TaskStatus.replied => AppColors.taskConfirmedBorder,
+      TaskStatus.completed => AppColors.taskCompletedBorder,
+      TaskStatus.ignored => AppColors.taskDisabledBorder,
+    };
     return Card(
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: cardBorder),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -49,7 +67,10 @@ class TaskCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _StatusChip(status: task.status),
+                TaskStatusChip(
+                  label: task.status.label,
+                  status: task.status.value,
+                ),
               ],
             ),
             const SizedBox(height: 14),
@@ -118,31 +139,6 @@ class TaskCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
-
-  final TaskStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (status) {
-      TaskStatus.pending => const Color(0xFFE0A458),
-      TaskStatus.replied => AppColors.primary,
-      TaskStatus.completed => const Color(0xFF4F772D),
-      TaskStatus.ignored => const Color(0xFF767676),
-    };
-    return Chip(
-      label: Text(status.label),
-      labelStyle: const TextStyle(
-        color: Colors.white,
-        fontWeight: FontWeight.w700,
-      ),
-      backgroundColor: color,
-      side: BorderSide.none,
     );
   }
 }

@@ -1,6 +1,4 @@
 import '../models/charge_task.dart';
-import '../models/charge_task_status.dart';
-import '../models/charge_resolution_type.dart';
 import '../models/charge_user_profile.dart';
 
 abstract class ChargeApi {
@@ -17,9 +15,5 @@ abstract class ChargeApi {
   Future<void> logout({String? token});
   Future<List<ChargeTask>> fetchTasks();
   Future<ChargeTask> fetchTask(int serialNumber);
-  Future<void> updateTask(
-    int serialNumber, {
-    required ChargeTaskStatus status,
-    required ChargeResolutionType resolutionType,
-  });
+  Future<void> updateTask(int serialNumber, {required bool isDone});
 }

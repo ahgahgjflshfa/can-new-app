@@ -11,9 +11,9 @@ import '../services/session_store.dart';
 import '../theme/app_colors.dart';
 import '../widgets/charge_task_card.dart';
 import '../widgets/error_state.dart';
+import '../widgets/snack_bar_message.dart';
 import '../widgets/stale_task_banner.dart';
 import 'charge_settings_screen.dart';
-import 'charge_task_detail_screen.dart';
 
 class ChargeTasksScreen extends StatefulWidget {
   const ChargeTasksScreen({
@@ -41,6 +41,7 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
   String? _error;
   List<ChargeTask>? _lastTasks;
   DateTime? _lastResumeRefreshAt;
+  var _busySerialNumber = 0;
 
   @override
   void initState() {
@@ -145,7 +146,12 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
                       color: AppColors.chargePrimary,
                     ),
                     const SizedBox(height: 16),
-                    const Center(child: Text('目前沒有待處理任務\n可下拉或按重新整理檢查最新任務')),
+                    const Center(
+                      child: Text(
+                        '目前沒有待處理任務\n可下拉或按重新整理檢查最新任務',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ],
                 );
               }
@@ -165,9 +171,17 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
                   }
                   final taskIndex =
                       index - ((refreshing || snapshot.hasError) ? 1 : 0);
+                  final task = tasks[taskIndex];
                   return ChargeTaskCard(
-                    task: tasks[taskIndex],
-                    onTap: () => _openDetail(tasks[taskIndex]),
+                    task: task,
+                    busy: _busySerialNumber == task.serialNumber,
+                    locked: _busySerialNumber != 0,
+                    onComplete: task.isPending
+                        ? () => _confirmTask(task, true)
+                        : null,
+                    onReopen: task.isDone && !task.isDisable
+                        ? () => _confirmTask(task, false)
+                        : null,
                   );
                 },
               );
@@ -193,7 +207,11 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
     return filtered;
   }
 
-  void _refresh() => setState(() => _tasksFuture = _loadTasks());
+  void _refresh() {
+    setState(() {
+      _tasksFuture = _loadTasks();
+    });
+  }
 
   void _refreshFromPush() {
     if (mounted && widget.pushService.shouldRefreshFor(PushSystem.charge)) {
@@ -215,16 +233,39 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
   void _returnToSelection() =>
       Navigator.of(context).popUntil((route) => route.isFirst);
 
-  void _openDetail(ChargeTask task) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ChargeTaskDetailScreen(
-          api: widget.api,
-          task: task,
-          onCompleted: _refresh,
-        ),
+  Future<void> _confirmTask(ChargeTask task, bool isDone) async {
+    final action = isDone ? '標記完成' : '重新開啟';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(isDone ? '確定已完成' : '確定重新開啟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('確定'),
+          ),
+        ],
       ),
     );
+    if (confirmed != true) return;
+
+    setState(() => _busySerialNumber = task.serialNumber);
+    try {
+      await widget.api.updateTask(task.serialNumber, isDone: isDone);
+      if (!mounted) return;
+      showSnackBarMessage(context, isDone ? '已標記完成' : '已重新開啟');
+      _refresh();
+    } on ApiException {
+      if (mounted) showSnackBarMessage(context, '任務處理失敗，請稍後重試');
+    } on SocketException {
+      if (mounted) showSnackBarMessage(context, '網路連線中斷，請稍後重試');
+    } finally {
+      if (mounted) setState(() => _busySerialNumber = 0);
+    }
   }
 
   Future<void> _openSettings() async {

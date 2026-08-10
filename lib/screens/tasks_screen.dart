@@ -238,12 +238,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
     CompletionResult result,
   ) async {
     final noPassenger = result == CompletionResult.noPassenger;
-    final confirmed = await _confirmAction(
-      title: noPassenger ? '現場無人，結束這筆？' : '確認協助完成？',
-      message: noPassenger
-          ? '結束後這筆會從待處理移除，請確認現場確實無人。'
-          : '結束後這筆會從待處理移除。',
-    );
+    final confirmed = await _confirmAction(title: '確定已完成', confirmLabel: '確定');
     if (confirmed) {
       await _runTaskAction(
         task.id,
@@ -255,13 +250,14 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
 
   Future<bool> _confirmAction({
     required String title,
-    required String message,
+    String? message,
+    String confirmLabel = '確認',
   }) async {
     return await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
             title: Text(title),
-            content: Text(message),
+            content: message == null ? null : Text(message),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -269,7 +265,7 @@ class _TasksScreenState extends State<TasksScreen> with WidgetsBindingObserver {
               ),
               FilledButton(
                 onPressed: () => Navigator.pop(context, true),
-                child: const Text('確認'),
+                child: Text(confirmLabel),
               ),
             ],
           ),

@@ -3,8 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/charge_task.dart';
-import '../models/charge_task_status.dart';
-import '../models/charge_resolution_type.dart';
 import '../models/charge_user_profile.dart';
 import 'api_exception.dart';
 import 'app_logger.dart';
@@ -79,15 +77,11 @@ class ChargeApiClient implements ChargeApi {
   }
 
   @override
-  Future<void> updateTask(
-    int serialNumber, {
-    required ChargeTaskStatus status,
-    required ChargeResolutionType resolutionType,
-  }) async {
+  Future<void> updateTask(int serialNumber, {required bool isDone}) async {
     await _send(
       'PATCH',
       '/charge/task/$serialNumber',
-      body: {'status': status.value, 'resolutionType': resolutionType.value},
+      body: {'isDone': isDone},
     );
   }
 

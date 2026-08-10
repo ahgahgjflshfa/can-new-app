@@ -8,8 +8,6 @@ import 'package:can_new_app/models/can_task.dart';
 import 'package:can_new_app/models/can_user_profile.dart';
 import 'package:can_new_app/models/charge_session.dart';
 import 'package:can_new_app/models/charge_task.dart';
-import 'package:can_new_app/models/charge_task_status.dart';
-import 'package:can_new_app/models/charge_resolution_type.dart';
 import 'package:can_new_app/models/charge_user_profile.dart';
 import 'package:can_new_app/models/completion_result.dart';
 import 'package:can_new_app/models/task_status.dart';
@@ -30,7 +28,9 @@ import 'package:can_new_app/widgets/notification_permission_card.dart';
 import 'package:can_new_app/widgets/charge_task_card.dart';
 import 'package:can_new_app/widgets/stale_task_banner.dart';
 import 'package:can_new_app/widgets/notification_settings.dart';
-import 'package:can_new_app/screens/charge_task_detail_screen.dart';
+import 'package:can_new_app/screens/charge_tasks_screen.dart';
+import 'package:can_new_app/theme/app_colors.dart';
+import 'package:can_new_app/widgets/task_status_chip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -88,9 +88,10 @@ void main() {
     expect(retries, 1);
   });
 
-  testWidgets('Charge typed task renders a staff-facing status', (
+  testWidgets('Charge task card exposes an inline completion action', (
     tester,
   ) async {
+    var completed = false;
     await tester.pumpWidget(
       MaterialApp(
         home: ChargeTaskCard(
@@ -98,160 +99,120 @@ void main() {
             serialNumber: 7,
             deviceCode: 'CH-07',
             station: 'A12',
-            status: ChargeTaskStatus.processing,
-            faultDescription: '無法充電',
-            faultType: '設備異常',
-            resolutionType: 0,
+            isDone: false,
+            cleanAt: null,
+            informTime: 1,
             isDisable: false,
             createdAt: '',
             updatedAt: '',
           ),
-          onTap: _noop,
+          busy: false,
+          locked: false,
+          onComplete: () => completed = true,
         ),
       ),
     );
 
-    expect(find.text('處理中'), findsOneWidget);
-    expect(find.text('processing'), findsNothing);
+    expect(find.text('待處理'), findsOneWidget);
+    expect(find.text('標記完成'), findsOneWidget);
+    expect(find.text('查看故障詳情'), findsNothing);
+    await tester.tap(find.text('標記完成'));
+    expect(completed, isTrue);
   });
 
-  testWidgets(
-    'Charge completion requires confirmation and remains safe at large text',
-    (tester) async {
-      final api = FakeChargeApi();
-      tester.view.physicalSize = const Size(320, 640);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: MediaQuery(
-            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
-            child: ChargeTaskDetailScreen(
-              api: api,
-              task: const ChargeTask(
-                serialNumber: 8,
-                deviceCode: 'CH-08-long-device-code',
-                station: 'A12',
-                status: ChargeTaskStatus.processing,
-                faultDescription: '設備無法正常提供充電服務',
-                faultType: '設備異常',
-                resolutionType: 0,
-                isDisable: false,
-                createdAt: '',
-                updatedAt: '',
-              ),
-            ),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
-      await tester.scrollUntilVisible(find.text('標記完成'), 300);
-      await tester.tap(find.text('標記完成'));
-      await tester.pump();
-      expect(find.text('確認標記完成？'), findsOneWidget);
-      await tester.tap(find.widgetWithText(TextButton, '取消'));
-      await tester.pumpAndSettle();
-      expect(api.updateCalls, 0);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  test(
-    'notification settings opener selects mobile, fallback, and failure paths',
-    () async {
-      var calls = 0;
-      expect(
-        await openNotificationSettings(
-          isAndroid: true,
-          opener: () async => calls++,
-        ),
-        NotificationSettingsResult.requested,
-      );
-      expect(calls, 1);
-      expect(
-        await openNotificationSettings(isAndroid: false, isIOS: false),
-        NotificationSettingsResult.unsupported,
-      );
-      expect(
-        await openNotificationSettings(
-          isIOS: true,
-          opener: () async => throw StateError('settings unavailable'),
-        ),
-        NotificationSettingsResult.failed,
-      );
-    },
-  );
-
-  testWidgets('Charge does not offer completion for cancelled tasks', (
+  testWidgets('shared task status chips use red, yellow, and green', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: ChargeTaskDetailScreen(
-          api: FakeChargeApi(),
-          task: const ChargeTask(
-            serialNumber: 9,
-            deviceCode: 'CH-09',
-            station: 'A12',
-            status: ChargeTaskStatus.cancelled,
-            faultDescription: '',
-            faultType: '',
-            resolutionType: 0,
-            isDisable: false,
-            createdAt: '',
-            updatedAt: '',
+      const MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              TaskStatusChip(label: '待處理', status: 'pending'),
+              TaskStatusChip(label: '處理中', status: 'replied'),
+              TaskStatusChip(label: '已完成', status: 'completed'),
+            ],
           ),
         ),
       ),
     );
-    expect(find.text('已取消'), findsNWidgets(2));
-    expect(find.text('標記完成'), findsNothing);
+
+    final chips = tester.widgetList<Chip>(find.byType(Chip)).toList();
+    expect((chips[0].labelStyle as TextStyle).color, AppColors.taskPending);
+    expect((chips[1].labelStyle as TextStyle).color, AppColors.taskConfirmed);
+    expect((chips[2].labelStyle as TextStyle).color, AppColors.taskCompleted);
   });
 
-  testWidgets(
-    'Charge does not offer completion for unknown or disabled tasks',
-    (tester) async {
-      final cases = [
-        const ChargeTask(
-          serialNumber: 10,
-          deviceCode: 'CH-10',
-          station: 'A12',
-          status: ChargeTaskStatus.unknown,
-          faultDescription: '',
-          faultType: '',
-          resolutionType: 0,
-          isDisable: false,
-          createdAt: '',
-          updatedAt: '',
+  testWidgets('Charge empty-state description is centered', (tester) async {
+    final api = FakeChargeApi();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChargeTasksScreen(
+          api: api,
+          user: const ChargeUserProfile(account: 'charge', station: 'A12'),
+          deviceId: 'device',
+          pushService: PushNotificationService(),
+          sessionStore: MemorySessionStore(),
         ),
-        const ChargeTask(
-          serialNumber: 11,
-          deviceCode: 'CH-11',
-          station: 'A12',
-          status: ChargeTaskStatus.processing,
-          faultDescription: '',
-          faultType: '',
-          resolutionType: 0,
-          isDisable: true,
-          createdAt: '',
-          updatedAt: '',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final description = tester.widget<Text>(
+      find.text('目前沒有待處理任務\n可下拉或按重新整理檢查最新任務'),
+    );
+    expect(description.textAlign, TextAlign.center);
+  });
+
+  testWidgets('Charge list completion sends isDone after confirmation', (
+    tester,
+  ) async {
+    final api = FakeChargeApi(tasks: [_chargeTask()]);
+    await tester.pumpWidget(_chargeTasksApp(api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('標記完成'));
+    await tester.pump();
+    expect(find.text('確定已完成'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '確定'));
+    await tester.pumpAndSettle();
+
+    expect(api.updatedValues, [true]);
+  });
+
+  testWidgets('Charge list completed task can be reopened inline', (
+    tester,
+  ) async {
+    final api = FakeChargeApi(
+      tasks: [
+        _chargeTask(
+          serialNumber: 9,
+          isDone: true,
+          cleanAt: '2026-08-08T00:00:00.000Z',
         ),
-      ];
-      for (final task in cases) {
-        await tester.pumpWidget(
-          KeyedSubtree(
-            key: UniqueKey(),
-            child: MaterialApp(
-              home: ChargeTaskDetailScreen(api: FakeChargeApi(), task: task),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.text('標記完成'), findsNothing);
-      }
-    },
-  );
+      ],
+    );
+    await tester.pumpWidget(_chargeTasksApp(api));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('重新開啟'));
+    await tester.pump();
+    expect(find.text('確定重新開啟'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, '確定'));
+    await tester.pumpAndSettle();
+
+    expect(api.updatedValues, [false]);
+  });
+
+  testWidgets('Charge disabled task cannot be changed inline', (tester) async {
+    final api = FakeChargeApi(tasks: [_chargeTask(isDisable: true)]);
+    await tester.pumpWidget(_chargeTasksApp(api));
+    await tester.pumpAndSettle();
+
+    expect(find.text('停用'), findsOneWidget);
+    expect(find.text('標記完成'), findsNothing);
+    expect(find.text('重新開啟'), findsNothing);
+  });
 
   testWidgets('local invalidation and routing precede pending remote cleanup', (
     tester,
@@ -465,7 +426,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('complete-empty-49')));
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '確認'));
+    await tester.tap(find.widgetWithText(FilledButton, '確定'));
     await tester.pumpAndSettle();
 
     expect(api.completedTasks, {49: CompletionResult.noPassenger});
@@ -625,7 +586,7 @@ void main() {
 
     await tester.tap(find.text('完成清潔').first);
     await tester.pump();
-    await tester.tap(find.widgetWithText(FilledButton, '確認結案'));
+    await tester.tap(find.widgetWithText(FilledButton, '確定'));
     await tester.pumpAndSettle();
 
     expect(canApi.completedSerialNumbers, [1]);
@@ -1116,9 +1077,44 @@ Widget _app(FakeApi api) {
   );
 }
 
+ChargeTask _chargeTask({
+  int serialNumber = 8,
+  bool isDone = false,
+  String? cleanAt,
+  bool isDisable = false,
+}) {
+  return ChargeTask(
+    serialNumber: serialNumber,
+    deviceCode: 'CH-$serialNumber',
+    station: 'A12',
+    isDone: isDone,
+    cleanAt: cleanAt,
+    informTime: 1,
+    isDisable: isDisable,
+    createdAt: '',
+    updatedAt: '',
+  );
+}
+
+Widget _chargeTasksApp(FakeChargeApi api) {
+  return MaterialApp(
+    home: ChargeTasksScreen(
+      api: api,
+      user: const ChargeUserProfile(account: 'charge', station: 'A12'),
+      deviceId: 'device',
+      pushService: PushNotificationService(),
+      sessionStore: MemorySessionStore(),
+    ),
+  );
+}
+
 class FakeChargeApi implements ChargeApi {
+  FakeChargeApi({List<ChargeTask>? tasks}) : tasks = tasks ?? const [];
+
+  final List<ChargeTask> tasks;
   var fetchCalls = 0;
   var updateCalls = 0;
+  final List<bool> updatedValues = [];
   @override
   String? token;
   @override
@@ -1135,18 +1131,15 @@ class FakeChargeApi implements ChargeApi {
   @override
   Future<List<ChargeTask>> fetchTasks() async {
     fetchCalls++;
-    return const [];
+    return tasks;
   }
 
   @override
   Future<ChargeTask> fetchTask(int serialNumber) => throw UnimplementedError();
   @override
-  Future<void> updateTask(
-    int serialNumber, {
-    required ChargeTaskStatus status,
-    required ChargeResolutionType resolutionType,
-  }) async {
+  Future<void> updateTask(int serialNumber, {required bool isDone}) async {
     updateCalls++;
+    updatedValues.add(isDone);
   }
 }
 
