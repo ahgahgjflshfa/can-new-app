@@ -57,7 +57,7 @@ class ChargeAdvancedSettingsScreen extends StatelessWidget {
                                 title: '應用程式資訊',
                                 children: [
                                   _Info('版本', '1.0.1'),
-                                  _Info('站點', user.station),
+                                  _Info('站點', user.station ?? '未設定站點'),
                                   _Info('系統', 'Charge'),
                                 ],
                               ),

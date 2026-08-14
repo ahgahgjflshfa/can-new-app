@@ -69,13 +69,13 @@ class ChargeSettingsScreen extends StatelessWidget {
                     user.account,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
-                  subtitle: Text('站點: ${user.station}'),
+                  subtitle: Text('站點: ${user.station ?? '未設定站點'}'),
                 ),
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.notifications_outlined),
                   title: const Text('Charge 推播 topic'),
-                  subtitle: Text(topic),
+                  subtitle: Text(topic.isEmpty ? '未設定' : topic),
                 ),
                 ValueListenableBuilder<PushNotificationState>(
                   valueListenable: pushService.state,
@@ -181,10 +181,12 @@ class ChargeSettingsScreen extends StatelessWidget {
     messenger.showSnackBar(const SnackBar(content: Text('已登出')));
     unawaited(() async {
       var remoteCleanupFailed = false;
-      try {
-        await pushService.unsubscribeFromTopic(topic);
-      } catch (_) {
-        remoteCleanupFailed = true;
+      if (topic.isNotEmpty) {
+        try {
+          await pushService.unsubscribeFromTopic(topic);
+        } catch (_) {
+          remoteCleanupFailed = true;
+        }
       }
       try {
         await api.logout(token: capturedToken);

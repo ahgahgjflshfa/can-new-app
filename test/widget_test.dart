@@ -214,6 +214,32 @@ void main() {
     expect(find.text('重新開啟'), findsNothing);
   });
 
+  testWidgets('Charge global account loads all authorized tasks', (
+    tester,
+  ) async {
+    final api = FakeChargeApi(
+      tasks: [
+        _chargeTask(serialNumber: 11, station: 'A12'),
+        _chargeTask(serialNumber: 12, station: 'B12'),
+      ],
+    );
+    await tester.pumpWidget(
+      _chargeTasksApp(
+        api,
+        user: const ChargeUserProfile(
+          account: 'ChargeAdmin',
+          station: null,
+          accessScope: 'global',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.fetchCalls, 1);
+    expect(find.text('CH-11'), findsOneWidget);
+    expect(find.text('CH-12'), findsOneWidget);
+  });
+
   testWidgets('local invalidation and routing precede pending remote cleanup', (
     tester,
   ) async {
@@ -1079,6 +1105,7 @@ Widget _app(FakeApi api) {
 
 ChargeTask _chargeTask({
   int serialNumber = 8,
+  String station = 'A12',
   bool isDone = false,
   String? cleanAt,
   bool isDisable = false,
@@ -1086,7 +1113,7 @@ ChargeTask _chargeTask({
   return ChargeTask(
     serialNumber: serialNumber,
     deviceCode: 'CH-$serialNumber',
-    station: 'A12',
+    station: station,
     isDone: isDone,
     cleanAt: cleanAt,
     informTime: 1,
@@ -1096,11 +1123,11 @@ ChargeTask _chargeTask({
   );
 }
 
-Widget _chargeTasksApp(FakeChargeApi api) {
+Widget _chargeTasksApp(FakeChargeApi api, {ChargeUserProfile? user}) {
   return MaterialApp(
     home: ChargeTasksScreen(
       api: api,
-      user: const ChargeUserProfile(account: 'charge', station: 'A12'),
+      user: user ?? const ChargeUserProfile(account: 'charge', station: 'A12'),
       deviceId: 'device',
       pushService: PushNotificationService(),
       sessionStore: MemorySessionStore(),

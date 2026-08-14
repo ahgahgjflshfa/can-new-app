@@ -1,15 +1,20 @@
 class ChargeUserProfile {
   const ChargeUserProfile({
     required this.account,
-    required this.station,
+    this.station,
+    this.accessScope = 'station',
+    this.region,
+    this.topic,
     this.system = 'charge',
-    String? topic,
-  }) : topic = 'charge_$station';
+  });
 
   factory ChargeUserProfile.fromJson(Map<String, Object?> json) {
     return ChargeUserProfile(
       account: json['account'] as String? ?? '',
-      station: json['station'] as String? ?? '',
+      station: json['station'] as String?,
+      accessScope: json['accessScope'] as String? ?? 'station',
+      region: json['region'] as String?,
+      topic: json['topic'] as String?,
       system: json['system'] as String? ?? 'charge',
     );
   }
@@ -17,15 +22,27 @@ class ChargeUserProfile {
   Map<String, Object?> toJson() => {
     'account': account,
     'station': station,
-    'system': system,
+    'accessScope': accessScope,
+    'region': region,
     'topic': topic,
+    'system': system,
   };
 
   final String account;
-  final String station;
+  final String? station;
+  final String accessScope;
+  final String? region;
+  final String? topic;
   final String system;
-  final String topic;
 
-  /// Charge topics are intentionally derived, not taken from the login response.
-  String get chargeTopic => topic;
+  /// Uses the backend topic when supplied; legacy station sessions fall back
+  /// to the historical `charge_<station>` topic.
+  String get chargeTopic {
+    final backendTopic = topic?.trim();
+    if (backendTopic != null && backendTopic.isNotEmpty) return backendTopic;
+    final stationCode = station?.trim();
+    return stationCode == null || stationCode.isEmpty
+        ? ''
+        : 'charge_$stationCode';
+  }
 }

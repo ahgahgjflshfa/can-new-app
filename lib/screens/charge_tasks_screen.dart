@@ -49,7 +49,9 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
     WidgetsBinding.instance.addObserver(this);
     _tasksFuture = _loadTasks();
     widget.pushService.refreshSignal.addListener(_refreshFromPush);
-    widget.pushService.subscribeToTopic(widget.user.chargeTopic);
+    if (widget.user.chargeTopic.isNotEmpty) {
+      widget.pushService.subscribeToTopic(widget.user.chargeTopic);
+    }
   }
 
   @override
@@ -193,18 +195,14 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
   }
 
   Future<List<ChargeTask>> _loadTasks() async {
-    final station = widget.user.station.trim();
-    if (station.isEmpty) {
-      _error = '帳號未設定站點，請至設定登出後重新登入';
-      return const <ChargeTask>[];
-    }
     _error = null;
     final tasks = await widget.api.fetchTasks();
-    final filtered = tasks
-        .where((task) => task.station.trim() == station)
-        .toList();
-    _lastTasks = filtered;
-    return filtered;
+    final station = widget.user.station?.trim();
+    final visibleTasks = station == null || station.isEmpty
+        ? tasks
+        : tasks.where((task) => task.station.trim() == station).toList();
+    _lastTasks = visibleTasks;
+    return visibleTasks;
   }
 
   void _refresh() {

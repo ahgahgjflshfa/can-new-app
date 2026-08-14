@@ -155,7 +155,9 @@ class _ChargeLoginScreenState extends State<ChargeLoginScreen> {
       if (token == null || token.isEmpty) {
         throw const ApiException('登入成功但未取得 Token');
       }
-      await widget.pushService.subscribeToTopic('charge_${user.station}');
+      if (user.chargeTopic.isNotEmpty) {
+        await widget.pushService.subscribeToTopic(user.chargeTopic);
+      }
       await widget.sessionStore.saveChargeSession(
         ChargeSession(token: token, user: user, deviceId: deviceId),
       );

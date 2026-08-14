@@ -8,7 +8,7 @@ import 'api_exception.dart';
 import 'app_logger.dart';
 import 'charge_api.dart';
 
-const chargeBaseUrl = 'https://www-u.tymetro.com.tw/can_api/api';
+const chargeBaseUrl = 'https://www.tymetro.com.tw/can_api/api';
 const chargeApiTimeout = Duration(seconds: 12);
 
 class ChargeApiClient implements ChargeApi {

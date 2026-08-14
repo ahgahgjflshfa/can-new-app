@@ -134,6 +134,37 @@ void main() {
     },
   );
 
+  test(
+    'Charge profile preserves global login fields and reads legacy payloads',
+    () {
+      final global = ChargeUserProfile.fromJson(const {
+        'account': 'ChargeAdmin',
+        'station': null,
+        'accessScope': 'global',
+        'region': null,
+        'topic': null,
+        'system': 'charge',
+      });
+
+      expect(global.toJson(), {
+        'account': 'ChargeAdmin',
+        'station': null,
+        'accessScope': 'global',
+        'region': null,
+        'topic': null,
+        'system': 'charge',
+      });
+      expect(global.chargeTopic, isEmpty);
+
+      final legacy = ChargeUserProfile.fromJson(const {
+        'account': 'charge01',
+        'station': 'A02',
+      });
+      expect(legacy.accessScope, 'station');
+      expect(legacy.chargeTopic, 'charge_A02');
+    },
+  );
+
   test('cleanup deletion faults do not undo a committed tombstone', () async {
     final storage = _MemoryStorage()
       ..values['limabang.token'] = 'legacy'
