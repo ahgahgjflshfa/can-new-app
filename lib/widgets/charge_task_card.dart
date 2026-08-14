@@ -10,7 +10,6 @@ class ChargeTaskCard extends StatelessWidget {
     required this.busy,
     required this.locked,
     this.onComplete,
-    this.onReopen,
     super.key,
   });
 
@@ -18,7 +17,6 @@ class ChargeTaskCard extends StatelessWidget {
   final bool busy;
   final bool locked;
   final VoidCallback? onComplete;
-  final VoidCallback? onReopen;
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +55,7 @@ class ChargeTaskCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.ev_station_outlined, color: iconColor),
+                Icon(Icons.bolt, color: iconColor),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -91,20 +89,13 @@ class ChargeTaskCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text('完成時間: ${task.cleanAt}'),
             ],
-            if (!task.isDisable) ...[
+            if (!task.isDisable && !task.isDone) ...[
               const SizedBox(height: 12),
-              if (task.isDone)
-                OutlinedButton.icon(
-                  onPressed: locked ? null : onReopen,
-                  icon: const Icon(Icons.restart_alt),
-                  label: const Text('重新開啟'),
-                )
-              else
-                FilledButton.icon(
-                  onPressed: locked ? null : onComplete,
-                  icon: const Icon(Icons.check),
-                  label: const Text('標記完成'),
-                ),
+              FilledButton.icon(
+                onPressed: locked ? null : onComplete,
+                icon: const Icon(Icons.check),
+                label: const Text('標記完成'),
+              ),
             ],
           ],
         ),

@@ -180,30 +180,6 @@ void main() {
     expect(api.updatedValues, [true]);
   });
 
-  testWidgets('Charge list completed task can be reopened inline', (
-    tester,
-  ) async {
-    final api = FakeChargeApi(
-      tasks: [
-        _chargeTask(
-          serialNumber: 9,
-          isDone: true,
-          cleanAt: '2026-08-08T00:00:00.000Z',
-        ),
-      ],
-    );
-    await tester.pumpWidget(_chargeTasksApp(api));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('重新開啟'));
-    await tester.pump();
-    expect(find.text('確定重新開啟'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, '確定'));
-    await tester.pumpAndSettle();
-
-    expect(api.updatedValues, [false]);
-  });
-
   testWidgets('Charge disabled task cannot be changed inline', (tester) async {
     final api = FakeChargeApi(tasks: [_chargeTask(isDisable: true)]);
     await tester.pumpWidget(_chargeTasksApp(api));
@@ -212,6 +188,14 @@ void main() {
     expect(find.text('停用'), findsOneWidget);
     expect(find.text('標記完成'), findsNothing);
     expect(find.text('重新開啟'), findsNothing);
+  });
+
+  testWidgets('Charge completed task cannot be reopened', (tester) async {
+    final api = FakeChargeApi(tasks: [_chargeTask(isDone: true)]);
+    await tester.pumpWidget(_chargeTasksApp(api));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已完成'), findsOneWidget);
   });
 
   testWidgets('Charge global account loads all authorized tasks', (

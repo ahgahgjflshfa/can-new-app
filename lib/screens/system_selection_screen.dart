@@ -138,7 +138,6 @@ class _SystemSelectionScreenState extends State<SystemSelectionScreen> {
                     _SystemCard(
                       icon: Icons.accessible_forward,
                       title: '立碼幫幫忙',
-                      subtitle: '無障礙求助服務',
                       color: AppColors.primary,
                       onTap: () => _enterLimabang(context),
                     ),
@@ -146,7 +145,6 @@ class _SystemSelectionScreenState extends State<SystemSelectionScreen> {
                     _SystemCard(
                       icon: Icons.delete_outline,
                       title: 'Q 潔淨立馬清',
-                      subtitle: '垃圾桶溢滿回報處理系統',
                       color: Colors.green,
                       onTap: () => _enterCan(context),
                     ),
@@ -154,7 +152,6 @@ class _SystemSelectionScreenState extends State<SystemSelectionScreen> {
                     _SystemCard(
                       icon: Icons.bolt,
                       title: '無線充故障',
-                      subtitle: '充電設備異常與服務任務',
                       color: AppColors.chargePrimary,
                       onTap: () => _enterCharge(context),
                     ),
@@ -268,14 +265,12 @@ class _SystemCard extends StatelessWidget {
   const _SystemCard({
     required this.icon,
     required this.title,
-    required this.subtitle,
     required this.color,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
   final Color color;
   final VoidCallback onTap;
 
@@ -309,11 +304,6 @@ class _SystemCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),

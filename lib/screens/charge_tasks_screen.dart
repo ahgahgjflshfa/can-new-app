@@ -179,10 +179,7 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
                     busy: _busySerialNumber == task.serialNumber,
                     locked: _busySerialNumber != 0,
                     onComplete: task.isPending
-                        ? () => _confirmTask(task, true)
-                        : null,
-                    onReopen: task.isDone && !task.isDisable
-                        ? () => _confirmTask(task, false)
+                        ? () => _confirmTask(task)
                         : null,
                   );
                 },
@@ -231,12 +228,11 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
   void _returnToSelection() =>
       Navigator.of(context).popUntil((route) => route.isFirst);
 
-  Future<void> _confirmTask(ChargeTask task, bool isDone) async {
-    final action = isDone ? '標記完成' : '重新開啟';
+  Future<void> _confirmTask(ChargeTask task) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(isDone ? '確定已完成' : '確定重新開啟'),
+        title: const Text('確定已完成'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -253,9 +249,9 @@ class _ChargeTasksScreenState extends State<ChargeTasksScreen>
 
     setState(() => _busySerialNumber = task.serialNumber);
     try {
-      await widget.api.updateTask(task.serialNumber, isDone: isDone);
+      await widget.api.updateTask(task.serialNumber, isDone: true);
       if (!mounted) return;
-      showSnackBarMessage(context, isDone ? '已標記完成' : '已重新開啟');
+      showSnackBarMessage(context, '已標記完成');
       _refresh();
     } on ApiException {
       if (mounted) showSnackBarMessage(context, '任務處理失敗，請稍後重試');

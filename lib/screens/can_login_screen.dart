@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -159,10 +160,12 @@ class _CanLoginScreenState extends State<CanLoginScreen> {
       final station = user.station?.trim();
       final topic = user.topic?.trim();
       if (topic != null && topic.isNotEmpty) {
-        await widget.pushService.subscribeToTopic(topic);
+        unawaited(widget.pushService.subscribeToTopic(topic));
       } else if (station != null && station.isNotEmpty) {
-        await widget.pushService.subscribeToTopic(
-          widget.pushService.topicFor(PushSystem.can, station),
+        unawaited(
+          widget.pushService.subscribeToTopic(
+            widget.pushService.topicFor(PushSystem.can, station),
+          ),
         );
       }
       await widget.sessionStore.saveCanSession(
